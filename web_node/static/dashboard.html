@@ -36,19 +36,19 @@
       <!-- Navigation Menu -->
       <nav class="sidebar-nav">
         <div class="nav-section-label">MONITORING</div>
-        <a href="#section-overview" class="nav-link active" data-target="section-overview">
+        <a href="#topology" class="nav-link active" data-view="topology">
           <span class="nav-icon">🗺️</span>
           <span class="nav-text">Topology &amp; Live Feeds</span>
           <span class="nav-badge" id="navNodeBadge">0</span>
         </a>
-        <a href="#section-attendance" class="nav-link" data-target="section-attendance">
+        <a href="#attendance" class="nav-link" data-view="attendance">
           <span class="nav-icon">📋</span>
           <span class="nav-text">Attendance &amp; Logs</span>
           <span class="nav-badge pill-green" id="navVerifiedBadge">0</span>
         </a>
 
         <div class="nav-section-label">MANAGEMENT &amp; NODES</div>
-        <a href="#section-enrolled" class="nav-link" data-target="section-enrolled">
+        <a href="#enrolled" class="nav-link" data-view="enrolled">
           <span class="nav-icon">👥</span>
           <span class="nav-text">Enrolled Students</span>
           <span class="nav-badge" id="navEnrolledBadge">0</span>
@@ -121,183 +121,189 @@
       <!-- Main Scrollable Content Area -->
       <main class="dash-content-area">
 
-        <!-- DUAL OVERVIEW: TOPOLOGY MAP & LIVE CAMERA MATRIX SIDE-BY-SIDE -->
-        <div class="dash-overview-split" id="section-overview">
+        <!-- VIEW 1: DUAL OVERVIEW (TOPOLOGY MAP & LIVE CAMERA MATRIX SIDE-BY-SIDE) -->
+        <div class="dash-view-panel active" id="view-topology">
+          <div class="dash-overview-split" id="section-overview">
 
-          <!-- 1. DYNAMIC TOPOLOGICAL NETWORK MAP -->
-          <section class="dash-section topo-map-section" id="section-topology">
-            <div class="section-title-bar">
-              <div class="title-left">
-                <span class="sec-icon">🌐</span>
-                <div>
-                  <h3>Network Topology Map</h3>
-                  <div class="sec-sub">Real-time dynamic nodes &amp; movement trajectories</div>
+            <!-- 1. DYNAMIC TOPOLOGICAL NETWORK MAP -->
+            <section class="dash-section topo-map-section" id="section-topology">
+              <div class="section-title-bar">
+                <div class="title-left">
+                  <span class="sec-icon">🌐</span>
+                  <div>
+                    <h3>Network Topology Map</h3>
+                    <div class="sec-sub">Real-time dynamic nodes &amp; movement trajectories</div>
+                  </div>
+                </div>
+                <div class="map-legend-bar">
+                  <div class="legend-item"><span class="legend-swatch swatch-gray"></span> Standby</div>
+                  <div class="legend-item"><span class="legend-swatch swatch-green-2"></span> Active</div>
+                  <div class="legend-item"><span class="legend-arrow-icon">➔</span> Trajectory</div>
                 </div>
               </div>
-              <div class="map-legend-bar">
-                <div class="legend-item"><span class="legend-swatch swatch-gray"></span> Standby</div>
-                <div class="legend-item"><span class="legend-swatch swatch-green-2"></span> Active</div>
-                <div class="legend-item"><span class="legend-arrow-icon">➔</span> Trajectory</div>
-              </div>
-            </div>
 
-            <div class="topo-map-card">
-              <div class="topo-map-canvas-wrap">
-                <svg id="topoMapSvg" class="topo-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid meet">
-                  <defs>
-                    <!-- Directed Arrow Markers (Clean, Forward-Facing, High-Contrast) -->
-                    <marker id="edgeArrowGreen" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
-                      <path d="M 1 2 L 10 6 L 1 10 z" fill="#00ff88" />
-                    </marker>
-                    <marker id="edgeArrowCyan" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
-                      <path d="M 1 2 L 10 6 L 1 10 z" fill="#00e5ff" />
-                    </marker>
+              <div class="topo-map-card">
+                <div class="topo-map-canvas-wrap">
+                  <svg id="topoMapSvg" class="topo-svg" viewBox="0 0 1000 580" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                      <!-- Directed Arrow Markers (Clean, Forward-Facing, High-Contrast) -->
+                      <marker id="edgeArrowGreen" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+                        <path d="M 1 2 L 10 6 L 1 10 z" fill="#00ff88" />
+                      </marker>
+                      <marker id="edgeArrowCyan" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+                        <path d="M 1 2 L 10 6 L 1 10 z" fill="#00e5ff" />
+                      </marker>
 
-                    <!-- Glow Filters -->
-                    <filter id="glowPeakGreen" x="-30%" y="-30%" width="160%" height="160%">
-                      <feGaussianBlur stdDeviation="8" result="blur" />
-                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
-                    <filter id="glowEdge" x="-30%" y="-30%" width="160%" height="160%">
-                      <feGaussianBlur stdDeviation="4" result="blur" />
-                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
+                      <!-- Glow Filters -->
+                      <filter id="glowPeakGreen" x="-30%" y="-30%" width="160%" height="160%">
+                        <feGaussianBlur stdDeviation="8" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                      <filter id="glowEdge" x="-30%" y="-30%" width="160%" height="160%">
+                        <feGaussianBlur stdDeviation="4" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
 
-                    <!-- Grid Pattern -->
-                    <pattern id="topoGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1"/>
-                      <circle cx="0" cy="0" r="1.5" fill="rgba(0, 229, 255, 0.18)"/>
-                    </pattern>
-                  </defs>
+                      <!-- Grid Pattern -->
+                      <pattern id="topoGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1"/>
+                        <circle cx="0" cy="0" r="1.5" fill="rgba(0, 229, 255, 0.18)"/>
+                      </pattern>
+                    </defs>
 
-                  <!-- Map Background Grid -->
-                  <rect width="100%" height="100%" fill="url(#topoGrid)" />
+                    <!-- Map Background Grid -->
+                    <rect width="100%" height="100%" fill="url(#topoGrid)" />
 
-                  <!-- Layer 1: Directed Edges (Cross-Camera Movement) -->
-                  <g id="topoEdgesLayer"></g>
+                    <!-- Layer 1: Directed Edges (Cross-Camera Movement) -->
+                    <g id="topoEdgesLayer"></g>
 
-                  <!-- Layer 2: Dynamic Camera Nodes -->
-                  <g id="topoNodesLayer"></g>
-                </svg>
+                    <!-- Layer 2: Dynamic Camera Nodes -->
+                    <g id="topoNodesLayer"></g>
+                  </svg>
 
-                <!-- Empty Overlay when 0 cameras connected -->
-                <div id="topoEmptyBanner" class="topo-empty-overlay">
-                  <div class="topo-empty-inner">
-                    <span class="topo-empty-radar">📡</span>
-                    <h4>Network Scanner Awaiting Nodes</h4>
-                    <p>Connected camera nodes will dynamically plot on this live topology map.</p>
+                  <!-- Empty Overlay when 0 cameras connected -->
+                  <div id="topoEmptyBanner" class="topo-empty-overlay">
+                    <div class="topo-empty-inner">
+                      <span class="topo-empty-radar">📡</span>
+                      <h4>Network Scanner Awaiting Nodes</h4>
+                      <p>Connected camera nodes will dynamically plot on this live topology map.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Bottom Status & Movement Ticker -->
+                <div class="topo-footer-bar">
+                  <div class="topo-footer-left">
+                    <span class="live-dot" id="topoLiveDot"></span>
+                    <span id="topoStatusText">Network Ready • 0 Nodes Plotted</span>
+                  </div>
+                  <div class="topo-footer-right" id="topoTransitionTicker">
+                    Awaiting detection events...
                   </div>
                 </div>
               </div>
+            </section>
 
-              <!-- Bottom Status & Movement Ticker -->
-              <div class="topo-footer-bar">
-                <div class="topo-footer-left">
-                  <span class="live-dot" id="topoLiveDot"></span>
-                  <span id="topoStatusText">Network Ready • 0 Nodes Plotted</span>
+            <!-- 2. LIVE MULTI-CAMERA GRID -->
+            <section class="dash-section camera-matrix-section" id="section-cameras">
+              <div class="section-title-bar">
+                <div class="title-left">
+                  <span class="sec-icon">📹</span>
+                  <div>
+                    <h3>Live Camera Feeds Matrix</h3>
+                    <div class="sec-sub">Active streams &amp; edge telemetry</div>
+                  </div>
                 </div>
-                <div class="topo-footer-right" id="topoTransitionTicker">
-                  Awaiting detection events...
-                </div>
+                <span class="pill-badge pill-green" id="dashNodeCount">0 Cameras Online</span>
               </div>
-            </div>
-          </section>
-
-          <!-- 2. LIVE MULTI-CAMERA GRID -->
-          <section class="dash-section camera-matrix-section" id="section-cameras">
-            <div class="section-title-bar">
-              <div class="title-left">
-                <span class="sec-icon">📹</span>
-                <div>
-                  <h3>Live Camera Feeds Matrix</h3>
-                  <div class="sec-sub">Active streams &amp; edge telemetry</div>
+              <div class="camera-matrix-grid-scroll">
+                <div class="camera-matrix-grid" id="dashCameraMatrix">
+                  <div class="empty-matrix-msg">Awaiting active camera node feeds...</div>
                 </div>
               </div>
-              <span class="pill-badge pill-green" id="dashNodeCount">0 Cameras Online</span>
-            </div>
-            <div class="camera-matrix-grid-scroll">
-              <div class="camera-matrix-grid" id="dashCameraMatrix">
-                <div class="empty-matrix-msg">Awaiting active camera node feeds...</div>
-              </div>
-            </div>
-          </section>
+            </section>
 
+          </div>
         </div>
 
-        <!-- 3. STUDENT VERIFICATION & ATTENDANCE LOGS -->
-        <section class="dash-section" id="section-attendance">
-          <div class="section-title-bar">
-            <div class="title-left">
-              <span class="sec-icon">📋</span>
-              <h3>Student Verification &amp; Activity Logs</h3>
-            </div>
-            <div class="title-actions">
-              <div class="tab-pill-group">
-                <button class="tab-pill active" id="tabUniqueStudents">Verified Students (Grouped)</button>
-                <button class="tab-pill" id="tabAllEvents">All Sighting Events</button>
+        <!-- VIEW 2: STUDENT VERIFICATION & ATTENDANCE LOGS -->
+        <div class="dash-view-panel" id="view-attendance" style="display: none;">
+          <section class="dash-section" id="section-attendance">
+            <div class="section-title-bar">
+              <div class="title-left">
+                <span class="sec-icon">📋</span>
+                <h3>Student Verification &amp; Activity Logs</h3>
               </div>
-              <input type="text" id="filterStudentId" class="form-input form-input-sm" placeholder="Search Student ID or Name...">
+              <div class="title-actions">
+                <div class="tab-pill-group">
+                  <button class="tab-pill active" id="tabUniqueStudents">Verified Students (Grouped)</button>
+                  <button class="tab-pill" id="tabAllEvents">All Sighting Events</button>
+                </div>
+                <input type="text" id="filterStudentId" class="form-input form-input-sm" placeholder="Search Student ID or Name...">
+              </div>
             </div>
-          </div>
-          <div class="card p-0">
-            <div class="table-scroll-container">
-              <!-- Table 1: Unique Students (Grouped) -->
-              <table class="dash-table" id="tableUniqueStudents">
-                <thead>
-                  <tr>
-                    <th>Student ID</th>
-                    <th>Student Name</th>
-                    <th>Camera Node</th>
-                    <th>Location</th>
-                    <th>First Seen</th>
-                    <th>Last Seen</th>
-                    <th>Sightings</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="dashUniqueTableBody">
-                  <tr class="empty-row">
-                    <td colspan="8">Loading verified students records...</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="card p-0">
+              <div class="table-scroll-container">
+                <!-- Table 1: Unique Students (Grouped) -->
+                <table class="dash-table" id="tableUniqueStudents">
+                  <thead>
+                    <tr>
+                      <th>Student ID</th>
+                      <th>Student Name</th>
+                      <th>Camera Node</th>
+                      <th>Location</th>
+                      <th>First Seen</th>
+                      <th>Last Seen</th>
+                      <th>Sightings</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashUniqueTableBody">
+                    <tr class="empty-row">
+                      <td colspan="8">Loading verified students records...</td>
+                    </tr>
+                  </tbody>
+                </table>
 
-              <!-- Table 2: All Events -->
-              <table class="dash-table" id="tableAllEvents" style="display: none;">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Student ID</th>
-                    <th>Student Name</th>
-                    <th>Camera Node</th>
-                    <th>Location</th>
-                    <th>Confidence</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="dashAllEventsTableBody">
-                  <tr class="empty-row">
-                    <td colspan="7">Loading real-time events...</td>
-                  </tr>
-                </tbody>
-              </table>
+                <!-- Table 2: All Events -->
+                <table class="dash-table" id="tableAllEvents" style="display: none;">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Student ID</th>
+                      <th>Student Name</th>
+                      <th>Camera Node</th>
+                      <th>Location</th>
+                      <th>Confidence</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashAllEventsTableBody">
+                    <tr class="empty-row">
+                      <td colspan="7">Loading real-time events...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <!-- 4. ENROLLED STUDENTS DIRECTORY -->
-        <section class="dash-section" id="section-enrolled">
-          <div class="section-title-bar">
-            <div class="title-left">
-              <span class="sec-icon">👥</span>
-              <h3>Enrolled Biometric Directory</h3>
+        <!-- VIEW 3: ENROLLED STUDENTS DIRECTORY -->
+        <div class="dash-view-panel" id="view-enrolled" style="display: none;">
+          <section class="dash-section" id="section-enrolled">
+            <div class="section-title-bar">
+              <div class="title-left">
+                <span class="sec-icon">👥</span>
+                <h3>Enrolled Biometric Directory</h3>
+              </div>
+              <span class="pill-badge pill-cyan" id="dashEnrolledBadge">0 Students Enrolled</span>
             </div>
-            <span class="pill-badge pill-cyan" id="dashEnrolledBadge">0 Students Enrolled</span>
-          </div>
-          <div class="enrolled-students-grid" id="dashEnrolledGrid">
-            <div class="empty-matrix-msg">Loading registered biometric profiles...</div>
-          </div>
-        </section>
+            <div class="enrolled-students-grid" id="dashEnrolledGrid">
+              <div class="empty-matrix-msg">Loading registered biometric profiles...</div>
+            </div>
+          </section>
+        </div>
 
       </main>
     </div>

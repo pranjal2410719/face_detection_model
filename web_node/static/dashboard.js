@@ -130,6 +130,7 @@
         } else if (msg.type === 'NODE_OFFLINE') {
           if (activeNodesMap[msg.data.camera_id]) {
             activeNodesMap[msg.data.camera_id].online = false;
+            activeNodesMap[msg.data.camera_id].fps = 0;
             renderTopologyMap();
             renderCameraMatrix();
           }
@@ -169,7 +170,8 @@
     // 1. Update Map Data
     const camId = data.camera_id;
     const isNew = !activeNodesMap[camId];
-    activeNodesMap[camId] = Object.assign(activeNodesMap[camId] || {}, data);
+    data.lastSeenLive = Date.now();
+    activeNodesMap[camId] = Object.assign(activeNodesMap[camId] || {}, data, { online: true });
 
     if (isNew) {
       renderTopologyMap();
@@ -200,9 +202,12 @@
       }
     }
 
-    // 3. Update Camera Card (without DOM flickering)
+    // 3. Update Camera Card and dynamically prioritize live streaming cameras at the top
     const card = document.getElementById(`cam-card-${camId}`);
     if (card) {
+      card.classList.remove('offline');
+      card.classList.add('online', 'is-streaming');
+
       const img = card.querySelector('.dash-cam-img');
       const placeholder = card.querySelector('.thumb-placeholder');
       if (data.latest_thumbnail) {
@@ -214,7 +219,16 @@
       }
       const fpsBadge = card.querySelector('.badge-fps');
       if (fpsBadge) {
+        fpsBadge.className = 'pill-badge badge-fps pill-green';
         fpsBadge.textContent = `● LIVE · ${Number(data.fps || 0).toFixed(1)} FPS`;
+      }
+
+      // If a non-streaming card is positioned ahead of this live streaming card, hoist it above
+      if (dashCameraMatrix && card.previousElementSibling && !card.previousElementSibling.classList.contains('is-streaming')) {
+        const firstNonStreaming = dashCameraMatrix.querySelector('.dash-cam-card:not(.is-streaming)');
+        if (firstNonStreaming && firstNonStreaming !== card) {
+          dashCameraMatrix.insertBefore(card, firstNonStreaming);
+        }
       }
     } else {
       renderCameraMatrix();
@@ -513,20 +527,20 @@
     if (count === 0) return;
 
     if (count === 1) {
-      nodeCoordinates[nodes[0].camera_id] = { x: 500, y: 170 };
+      nodeCoordinates[nodes[0].camera_id] = { x: 500, y: 280 };
       return;
     }
 
     if (count === 2) {
-      nodeCoordinates[nodes[0].camera_id] = { x: 260, y: 170 };
-      nodeCoordinates[nodes[1].camera_id] = { x: 740, y: 170 };
+      nodeCoordinates[nodes[0].camera_id] = { x: 260, y: 280 };
+      nodeCoordinates[nodes[1].camera_id] = { x: 740, y: 280 };
       return;
     }
 
     if (count === 3) {
-      nodeCoordinates[nodes[0].camera_id] = { x: 200, y: 170 };
-      nodeCoordinates[nodes[1].camera_id] = { x: 500, y: 140 };
-      nodeCoordinates[nodes[2].camera_id] = { x: 800, y: 170 };
+      nodeCoordinates[nodes[0].camera_id] = { x: 200, y: 280 };
+      nodeCoordinates[nodes[1].camera_id] = { x: 500, y: 230 };
+      nodeCoordinates[nodes[2].camera_id] = { x: 800, y: 280 };
       return;
     }
 
@@ -535,7 +549,7 @@
     const step = (1000 - 2 * padX) / Math.max(1, count - 1);
     nodes.forEach((n, idx) => {
       const x = padX + idx * step;
-      const y = 170 + (idx % 2 === 0 ? -25 : 25);
+      const y = 280 + (idx % 2 === 0 ? -45 : 45);
       nodeCoordinates[n.camera_id] = { x, y };
     });
   }
@@ -724,14 +738,27 @@
     }
   }
 
+  function isNodeStreaming(node) {
+    if (!node || node.online === false) return false;
+    const fps = Number(node.fps || 0);
+    if (fps > 0) return true;
+    if (node.latest_thumbnail) {
+      if (node.lastSeenLive && (Date.now() - node.lastSeenLive > 12000)) {
+        return false;
+      }
+      return true;
+    }
+    return false;
+  }
+
   function renderCameraMatrix() {
-    const nodes = Object.values(activeNodesMap);
-    const online = nodes.filter(n => n.online);
+    const rawNodes = Object.values(activeNodesMap);
+    const online = rawNodes.filter(n => n.online !== false);
 
     statActiveNodes.textContent = online.length;
     dashNodeCount.textContent = `${online.length} Camera${online.length === 1 ? '' : 's'} Online`;
 
-    if (nodes.length === 0) {
+    if (rawNodes.length === 0) {
       dashCameraMatrix.innerHTML = `
         <div class="empty-matrix-msg">
           No camera nodes active. Open the <strong>Camera Station</strong> to start streaming.
@@ -740,24 +767,56 @@
       return;
     }
 
+    // Sort: Live streaming cameras first, then online nodes, higher FPS, most recent heartbeat, camera ID
+    const nodes = [...rawNodes].sort((a, b) => {
+      const aLive = isNodeStreaming(a);
+      const bLive = isNodeStreaming(b);
+      if (aLive !== bLive) return bLive ? 1 : -1;
+
+      const aOnline = a.online !== false;
+      const bOnline = b.online !== false;
+      if (aOnline !== bOnline) return bOnline ? 1 : -1;
+
+      const aFps = Number(a.fps || 0);
+      const bFps = Number(b.fps || 0);
+      if (bFps !== aFps) return bFps - aFps;
+
+      const aTime = Number(a.last_heartbeat || a.lastSeenLive || 0);
+      const bTime = Number(b.last_heartbeat || b.lastSeenLive || 0);
+      if (bTime !== aTime) return bTime - aTime;
+
+      return (a.camera_id || '').localeCompare(b.camera_id || '');
+    });
+
     let html = '';
     nodes.forEach(node => {
       const isOnline = node.online !== false;
+      const isStreaming = isNodeStreaming(node);
       const thumb = node.latest_thumbnail;
       const thumbHtml = thumb
         ? `<img class="dash-cam-img" src="${thumb}" alt="${node.camera_id}">`
         : `<img class="dash-cam-img" style="display:none;" alt="${node.camera_id}"><div class="thumb-placeholder">Awaiting Video Feed...</div>`;
 
-      const fpsText = isOnline ? `● LIVE · ${Number(node.fps || 0).toFixed(1)} FPS` : 'OFFLINE';
+      let fpsText = 'OFFLINE';
+      let fpsClass = '';
+      if (isStreaming) {
+        fpsText = `● LIVE · ${Number(node.fps || 0).toFixed(1)} FPS`;
+        fpsClass = 'pill-green';
+      } else if (isOnline) {
+        fpsText = `STANDBY · 0.0 FPS`;
+        fpsClass = '';
+      }
+
+      const cardStateClass = isStreaming ? 'online is-streaming' : (isOnline ? 'online' : 'offline');
 
       html += `
-        <div id="cam-card-${node.camera_id}" class="dash-cam-card ${isOnline ? 'online' : 'offline'}">
+        <div id="cam-card-${node.camera_id}" class="dash-cam-card ${cardStateClass}">
           <div class="dash-cam-header">
             <div>
               <span class="dash-cam-id">${node.camera_id}</span>
               <span class="dash-cam-loc">(${node.location || 'Main Station'})</span>
             </div>
-            <span class="pill-badge badge-fps ${isOnline ? 'pill-green' : ''}">${fpsText}</span>
+            <span class="pill-badge badge-fps ${fpsClass}">${fpsText}</span>
           </div>
           <div class="dash-cam-viewport">
             ${thumbHtml}
@@ -940,8 +999,82 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 7. Sidebar Navigation & Smooth Section Scrolling
+  // 7. Sidebar Navigation & Tabbed View Switching
   // ---------------------------------------------------------------------------
+  const viewTitles = {
+    'topology': 'Real-Time Surveillance & Attendance Matrix',
+    'attendance': 'Student Attendance Verification & Activity Audit Logs',
+    'enrolled': 'Enrolled Student Biometrics Directory'
+  };
+
+  window.switchDashboardView = function (viewName) {
+    const panels = document.querySelectorAll('.dash-view-panel');
+    const links = document.querySelectorAll('.sidebar-nav .nav-link[data-view]');
+    const topbarTitle = document.getElementById('topbarViewTitle');
+
+    // 1. Update active sidebar link
+    links.forEach(l => {
+      if (l.getAttribute('data-view') === viewName) {
+        l.classList.add('active');
+      } else {
+        l.classList.remove('active');
+      }
+    });
+
+    // 2. Show only the targeted view panel, hide all others
+    let found = false;
+    panels.forEach(p => {
+      if (p.id === `view-${viewName}`) {
+        p.style.display = 'flex';
+        p.classList.add('active');
+        found = true;
+      } else {
+        p.style.display = 'none';
+        p.classList.remove('active');
+      }
+    });
+
+    // Fallback if not found: show topology
+    if (!found && panels.length > 0) {
+      panels[0].style.display = 'flex';
+      panels[0].classList.add('active');
+    }
+
+    // 3. Update topbar breadcrumb view title
+    if (topbarTitle && viewTitles[viewName]) {
+      topbarTitle.textContent = viewTitles[viewName];
+    }
+
+    // 4. Update URL hash
+    if (history.replaceState) {
+      history.replaceState(null, null, `#${viewName}`);
+    }
+
+    // 5. Trigger view-specific data updates
+    if (viewName === 'topology') {
+      setTimeout(() => {
+        renderTopologyMap();
+        renderCameraMatrix();
+      }, 50);
+    } else if (viewName === 'attendance') {
+      fetchEvents();
+    } else if (viewName === 'enrolled') {
+      fetchEnrolledStudents();
+    }
+
+    // Close mobile sidebar if open
+    const dashSidebar = document.getElementById('dashSidebar');
+    if (dashSidebar && dashSidebar.classList.contains('sidebar-open')) {
+      dashSidebar.classList.remove('sidebar-open');
+    }
+
+    // Scroll content area back to top
+    const contentArea = document.querySelector('.dash-content-area');
+    if (contentArea) {
+      contentArea.scrollTop = 0;
+    }
+  };
+
   function setupSidebarAndNav() {
     const btnSidebarToggle = document.getElementById('btnSidebarToggle');
     const dashSidebar = document.getElementById('dashSidebar');
@@ -958,50 +1091,21 @@
       });
     }
 
-    const navLinks = document.querySelectorAll('.dash-sidebar .nav-link');
-    const topbarViewTitle = document.getElementById('topbarViewTitle');
-
+    const navLinks = document.querySelectorAll('.dash-sidebar .nav-link[data-view]');
     navLinks.forEach(link => {
-      const href = link.getAttribute('href');
-      if (href && href.startsWith('#')) {
-        link.addEventListener('click', (e) => {
-          const targetId = href.substring(1);
-          const targetEl = document.getElementById(targetId);
-          if (targetEl) {
-            e.preventDefault();
-            navLinks.forEach(l => l.classList.remove('active'));
-            link.classList.add('active');
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-            if (topbarViewTitle) {
-              const textSpan = link.querySelector('.nav-text');
-              if (textSpan) topbarViewTitle.textContent = textSpan.textContent;
-            }
-
-            if (history.replaceState) {
-              history.replaceState(null, null, href);
-            }
-
-            if (dashSidebar && dashSidebar.classList.contains('sidebar-open')) {
-              dashSidebar.classList.remove('sidebar-open');
-            }
-          }
-        });
-      }
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const v = link.getAttribute('data-view');
+        if (v) window.switchDashboardView(v);
+      });
     });
 
-    // Check URL hash on load
-    const hash = window.location.hash;
-    if (hash) {
-      const activeLink = document.querySelector(`.dash-sidebar .nav-link[href="${hash}"]`);
-      if (activeLink) {
-        navLinks.forEach(l => l.classList.remove('active'));
-        activeLink.classList.add('active');
-        const targetEl = document.querySelector(hash);
-        if (targetEl) {
-          setTimeout(() => targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
-        }
-      }
+    // Check URL hash on initial load
+    const hash = window.location.hash.replace('#', '');
+    if (hash && ['topology', 'attendance', 'enrolled'].includes(hash)) {
+      window.switchDashboardView(hash);
+    } else {
+      window.switchDashboardView('topology');
     }
   }
 

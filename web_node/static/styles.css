@@ -1021,6 +1021,7 @@ label {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  width: 100%;
   animation: fadeIn 0.2s ease-in-out;
 }
 
@@ -1484,7 +1485,14 @@ label {
   gap: 8px;
 }
 
-/* Dual Overview Split: Network Topology & Camera Matrix Side by Side */
+/* Dual Overview Split: Network Topology & Camera Matrix Side by Side (Max Height Fill) */
+#view-topology {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 120px);
+}
+
 .dash-overview-split {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
@@ -1492,6 +1500,8 @@ label {
   align-items: stretch;
   min-width: 0;
   width: 100%;
+  flex: 1;
+  min-height: calc(100vh - 130px);
 }
 
 .dash-overview-split .topo-map-section,
@@ -1500,26 +1510,32 @@ label {
   flex-direction: column;
   min-width: 0;
   height: 100%;
+  flex: 1;
 }
 
 .dash-overview-split .topo-map-card {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 400px;
+  height: 100%;
+  min-height: calc(100vh - 200px);
 }
 
 .dash-overview-split .topo-map-canvas-wrap {
   flex: 1;
-  min-height: 340px;
-  height: auto;
+  height: 100%;
+  min-height: calc(100vh - 270px);
+  position: relative;
+  background: #05070c;
+  overflow: hidden;
 }
 
 .camera-matrix-grid-scroll {
   flex: 1;
   display: flex;
   flex-direction: column;
-  max-height: 450px;
+  height: 100%;
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
   border-radius: var(--radius-md);
   padding-right: 2px;
@@ -1527,16 +1543,27 @@ label {
 
 .camera-matrix-grid-scroll .camera-matrix-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
 }
 
 @media (max-width: 1180px) {
+  #view-topology {
+    min-height: auto;
+  }
   .dash-overview-split {
     grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .dash-overview-split .topo-map-card {
+    min-height: 480px;
+  }
+  .dash-overview-split .topo-map-canvas-wrap {
+    min-height: 420px;
   }
   .camera-matrix-grid-scroll {
     max-height: none;
+    min-height: auto;
   }
 }
 
@@ -1824,6 +1851,18 @@ label {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: all 0.25s ease-in-out;
+}
+
+.dash-cam-card.is-streaming {
+  border-color: rgba(0, 230, 118, 0.45);
+  box-shadow: 0 0 16px rgba(0, 230, 118, 0.15), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.dash-cam-card.offline {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+  border-color: rgba(255, 255, 255, 0.05);
 }
 
 .dash-cam-header {
@@ -1833,6 +1872,19 @@ label {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.dash-cam-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.dash-cam-loc {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: 4px;
 }
 
 .dash-cam-title {
@@ -1845,6 +1897,7 @@ label {
   color: #fff;
 }
 
+.dash-cam-viewport,
 .dash-cam-thumb-wrap {
   position: relative;
   width: 100%;
@@ -1854,6 +1907,12 @@ label {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+.dash-cam-card.is-streaming .badge-fps.pill-green {
+  background: rgba(0, 230, 118, 0.15);
+  color: #00e676;
+  border-color: rgba(0, 230, 118, 0.4);
 }
 
 .dash-cam-img {

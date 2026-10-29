@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Edge Camera Node Station • Real-Time Face Recognition</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="node-app-shell">
+    <!-- Top Header -->
+    <header class="node-header">
+      <div class="header-left">
+        <div class="node-pulse">
+          <span class="live-dot"></span>
+          <span class="brand-text">EDGE CAMERA NODE</span>
+        </div>
+        <div class="header-node-badge" id="headerNodeBadge">CAM-01 • Main Entrance Gate</div>
+      </div>
+
+      <div class="header-right">
+        <div class="status-chip" id="centralLinkStatus">
+          <span class="chip-dot"></span>
+          <span class="chip-text">CENTRAL RECEIVER: CONNECTED</span>
+        </div>
+        <a href="/dashboard" class="btn btn-outline btn-sm" target="_blank" title="Open Master Centralized Dashboard">
+          📊 Centralized Dashboard ↗
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="node-main-layout">
+      <!-- Left Column: Camera Viewport -->
+      <section class="camera-viewport-card">
+        <div class="viewport-hud-bar">
+          <div class="hud-left">
+            <span class="rec-indicator"></span>
+            <span class="hud-title">LIVE CAMERA FEED</span>
+          </div>
+          <div class="viewport-metrics">
+            <span class="metric-item"><strong id="metricFps">0.0</strong> FPS</span>
+            <span class="metric-item"><strong id="metricLatency">0.0</strong> ms</span>
+            <span class="metric-item"><strong id="metricFaces">0</strong> Face(s)</span>
+            <span class="metric-item"><strong id="metricEnrolled">1</strong> Enrolled</span>
+          </div>
+        </div>
+
+        <!-- Video Screen Container -->
+        <div class="viewport-screen-container">
+          <video id="webcamVideo" autoplay playsinline muted></video>
+          <canvas id="outputCanvas"></canvas>
+
+          <!-- Sighting Broadcast Banner -->
+          <div class="event-banner" id="eventBanner">
+            <div class="banner-icon">⚡</div>
+            <div class="banner-content">
+              <span class="banner-title">SIGHTING VERIFIED & DISPATCHED</span>
+              <span class="banner-desc" id="bannerDesc">Student [2410719] Pranjal yadav • 100% Match</span>
+            </div>
+            <span class="banner-badge">ACK RECEIVED</span>
+          </div>
+
+          <!-- Standby Overlay -->
+          <div class="standby-overlay" id="standbyOverlay">
+            <div class="standby-box" id="standbyBox">
+              <div class="standby-icon">📷</div>
+              <h3>Camera Node Standby</h3>
+              <p>Click "Start Camera Node" below to stream live video to the YuNet + SFace recognition pipeline.</p>
+              <button class="btn btn-primary btn-lg" id="btnStartOverlay">
+                ▶ Start Camera Node
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Camera Toolbar -->
+        <div class="camera-toolbar">
+          <div class="toolbar-left">
+            <button class="btn btn-success" id="btnToggleCamera">
+              <span class="btn-icon">▶</span> <span id="btnCameraText">Start Camera Node</span>
+            </button>
+            <button class="btn btn-accent" id="btnEnrollModal" title="Enroll Face currently in view">
+              <span class="btn-icon">👤+</span> Enroll Face
+            </button>
+            <button class="btn btn-secondary" id="btnSnapshot" title="Save annotated snapshot">
+              <span class="btn-icon">📸</span> Snapshot
+            </button>
+          </div>
+
+          <div class="toolbar-right">
+            <div class="control-group">
+              <label for="cameraSelect">Lens:</label>
+              <select id="cameraSelect" class="form-select"></select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Settings, Connected Nodes, Deduplicated Student Logs & Data Sent Logs -->
+      <aside class="node-sidebar">
+
+        <!-- 1. Node Settings Card -->
+        <div class="card settings-card">
+          <div class="card-header">
+            <h4>Node Settings</h4>
+            <span class="pill-badge pill-cyan">ACTIVE NODE</span>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="inputCameraId">Camera ID</label>
+                <input type="text" id="inputCameraId" class="form-input" value="CAM-01">
+              </div>
+              <div class="form-group">
+                <label for="inputLocation">Location</label>
+                <input type="text" id="inputLocation" class="form-input" value="Main Entrance Gate">
+              </div>
+            </div>
+            <button class="btn btn-outline btn-block" id="btnApplyConfig">Apply Node Identity</button>
+          </div>
+        </div>
+
+        <!-- 2. Connected Nodes Card -->
+        <div class="card connected-nodes-card">
+          <div class="card-header">
+            <h4>Connected Nodes</h4>
+            <span class="pill-badge pill-green" id="connectedCountBadge">1 Online</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="connected-list" id="connectedNodesList">
+              <div class="connected-item current">
+                <div class="node-dot online"></div>
+                <div class="node-info">
+                  <span class="node-name" id="sidebarCurrentNode">CAM-01 (This Node)</span>
+                  <span class="node-sub" id="sidebarCurrentLoc">Main Entrance Gate</span>
+                </div>
+                <span class="node-badge">LOCAL</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Student Sightings Log (Deduplicated - Show Once Even If Verified Multiple Times) -->
+        <div class="card student-log-card">
+          <div class="card-header">
+            <h4>Student Sightings (In View)</h4>
+            <span class="pill-badge pill-green" id="studentCountBadge">0 Students</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="student-table-wrap">
+              <table class="student-table">
+                <thead>
+                  <tr>
+                    <th>Student ID</th>
+                    <th>Name</th>
+                    <th>Verifications</th>
+                    <th>First Seen</th>
+                    <th>Last Confirmed</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="studentTableBody">
+                  <tr class="empty-row">
+                    <td colspan="6">No student faces detected yet in camera view.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Data Sent Logs (Transmission Terminal) -->
+        <div class="card data-sent-card">
+          <div class="card-header">
+            <h4>Data Sent Logs (Outbound Telemetry)</h4>
+            <span class="pill-badge pill-terminal">TRANSMISSION STREAM</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="terminal-log-wrap" id="dataSentTerminal">
+              <div class="term-line info">[INIT] Edge Camera Node ready. Awaiting sighting triggers...</div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+    </main>
+
+    <!-- Quick Face Enrollment Modal -->
+    <div class="modal-backdrop" id="enrollModal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>Enroll Authorized Student Face</h3>
+          <button class="modal-close" id="btnCloseModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-sub">The face currently detected by this camera node will be extracted into a 128-d biometric template.</p>
+          <div class="enroll-preview-box">
+            <canvas id="enrollCanvas"></canvas>
+            <div class="enroll-preview-caption">Frame Captured from Camera Node</div>
+          </div>
+          <div class="form-group">
+            <label for="enrollStudentId">Student ID *</label>
+            <input type="text" id="enrollStudentId" class="form-input" placeholder="e.g. 2410719" required>
+          </div>
+          <div class="form-group">
+            <label for="enrollName">Full Name *</label>
+            <input type="text" id="enrollName" class="form-input" placeholder="e.g. Pranjal yadav" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="enrollDept">Department</label>
+              <input type="text" id="enrollDept" class="form-input" value="Engineering">
+            </div>
+            <div class="form-group">
+              <label for="enrollBatch">Batch</label>
+              <input type="text" id="enrollBatch" class="form-input" value="2026">
+            </div>
+          </div>
+          <div class="modal-error" id="enrollError"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnCancelEnroll">Cancel</button>
+          <button class="btn btn-primary" id="btnSubmitEnroll">Save & Enroll Template</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

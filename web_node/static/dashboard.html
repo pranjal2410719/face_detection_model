@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Centralized Monitoring Dashboard • Face Recognition Network</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dashboard-body">
+  <div class="dash-shell">
+    
+    <!-- Top Dashboard Header -->
+    <header class="dash-header">
+      <div class="dash-brand">
+        <div class="dash-pulse-badge">
+          <span class="live-dot"></span>
+          <span class="dash-brand-title">CENTRAL CAMERA DASHBOARD</span>
+        </div>
+        <span class="dash-env-tag">REAL-TIME MONITORING &amp; STUDENT LOGS</span>
+      </div>
+
+      <div class="dash-stats-bar">
+        <div class="dash-stat-box">
+          <span class="stat-num" id="statActiveNodes">0</span>
+          <span class="stat-lbl">Connected Cameras</span>
+        </div>
+        <div class="dash-stat-box">
+          <span class="stat-num" id="statUniqueVerified">0</span>
+          <span class="stat-lbl">Verified Students</span>
+        </div>
+        <div class="dash-stat-box">
+          <span class="stat-num" id="statTotalSightings">0</span>
+          <span class="stat-lbl">Total Sightings</span>
+        </div>
+        <a href="/" class="btn btn-primary btn-sm">
+          📷 Open Camera Station ↗
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Content -->
+    <main class="dash-content">
+
+      <!-- TOP DYNAMIC TOPOLOGICAL NETWORK MAP -->
+      <section class="dash-section topo-map-section">
+        <div class="section-title-bar">
+          <div class="title-left">
+            <span class="sec-icon">🌐</span>
+            <div>
+              <h3>Dynamic Camera Network &amp; Sighting Topology Map</h3>
+              <div class="sec-sub">Real-time dynamic nodes, confidence-shaded green transitions, and movement direction arrows</div>
+            </div>
+          </div>
+          <div class="map-legend-bar">
+            <div class="legend-item"><span class="legend-swatch swatch-gray"></span> Standby</div>
+            <div class="legend-item"><span class="legend-swatch swatch-green-1"></span> Low (&lt;60%)</div>
+            <div class="legend-item"><span class="legend-swatch swatch-green-2"></span> Med (60-80%)</div>
+            <div class="legend-item"><span class="legend-swatch swatch-green-3"></span> High (&gt;80%)</div>
+            <div class="legend-item"><span class="legend-arrow-icon">➔</span> Transition Edge</div>
+          </div>
+        </div>
+
+        <div class="topo-map-card">
+          <div class="topo-map-canvas-wrap">
+            <svg id="topoMapSvg" class="topo-svg" viewBox="0 0 1000 340" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <!-- Directed Arrow Markers -->
+                <marker id="edgeArrowGreen" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 10 6 L 0 10.5 z" fill="#00ff88" />
+                </marker>
+                <marker id="edgeArrowCyan" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 10 6 L 0 10.5 z" fill="#00e5ff" />
+                </marker>
+
+                <!-- Glow Filter for Ultra-High Confidence -->
+                <filter id="glowPeakGreen" x="-30%" y="-30%" width="160%" height="160%">
+                  <feGaussianBlur stdDeviation="8" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+                <filter id="glowEdge" x="-30%" y="-30%" width="160%" height="160%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+
+                <!-- Grid Pattern -->
+                <pattern id="topoGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1"/>
+                  <circle cx="0" cy="0" r="1.5" fill="rgba(0, 229, 255, 0.18)"/>
+                </pattern>
+              </defs>
+
+              <!-- Map Background Grid -->
+              <rect width="100%" height="100%" fill="url(#topoGrid)" />
+
+              <!-- Layer 1: Directed Edges (Cross-Camera Movement) -->
+              <g id="topoEdgesLayer"></g>
+
+              <!-- Layer 2: Dynamic Camera Nodes -->
+              <g id="topoNodesLayer"></g>
+            </svg>
+
+            <!-- Empty Overlay when 0 cameras connected -->
+            <div id="topoEmptyBanner" class="topo-empty-overlay">
+              <div class="topo-empty-inner">
+                <span class="topo-empty-radar">📡</span>
+                <h4>Network Scanner Awaiting Nodes</h4>
+                <p>Launch an Edge Camera Station. Connected camera nodes will dynamically plot on this live topology map.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Status & Movement Ticker -->
+          <div class="topo-footer-bar">
+            <div class="topo-footer-left">
+              <span class="live-dot" id="topoLiveDot"></span>
+              <span id="topoStatusText">Network Ready • 0 Nodes Plotted</span>
+            </div>
+            <div class="topo-footer-right" id="topoTransitionTicker">
+              Awaiting detection events...
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 1: Live Multi-Camera Grid -->
+      <section class="dash-section">
+        <div class="section-title-bar">
+          <div class="title-left">
+            <span class="sec-icon">📹</span>
+            <h3>Live Camera Feeds</h3>
+          </div>
+          <span class="pill-badge pill-green" id="dashNodeCount">0 Cameras Online</span>
+        </div>
+        <div class="camera-matrix-grid" id="dashCameraMatrix">
+          <div class="empty-matrix-msg">Awaiting active camera node feeds...</div>
+        </div>
+      </section>
+
+      <!-- Section 2: Student Verification & Attendance Records -->
+      <section class="dash-section">
+        <div class="section-title-bar">
+          <div class="title-left">
+            <span class="sec-icon">📋</span>
+            <h3>Student Verification &amp; Activity Logs</h3>
+          </div>
+          <div class="title-actions">
+            <div class="tab-pill-group">
+              <button class="tab-pill active" id="tabUniqueStudents">Verified Students (Grouped)</button>
+              <button class="tab-pill" id="tabAllEvents">All Sighting Events</button>
+            </div>
+            <input type="text" id="filterStudentId" class="form-input form-input-sm" placeholder="Search Student ID or Name...">
+            <button class="btn btn-secondary btn-sm" id="btnRefreshDb">↻ Refresh</button>
+          </div>
+        </div>
+        <div class="card p-0">
+          <div class="table-scroll-container">
+            <!-- Table 1: Unique Students (Grouped) -->
+            <table class="dash-table" id="tableUniqueStudents">
+              <thead>
+                <tr>
+                  <th>Student ID</th>
+                  <th>Student Name</th>
+                  <th>Camera Node</th>
+                  <th>Location</th>
+                  <th>First Seen</th>
+                  <th>Last Seen</th>
+                  <th>Sightings</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="dashUniqueTableBody">
+                <tr class="empty-row">
+                  <td colspan="8">Loading verified students records...</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Table 2: All Events -->
+            <table class="dash-table" id="tableAllEvents" style="display: none;">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Student ID</th>
+                  <th>Student Name</th>
+                  <th>Camera Node</th>
+                  <th>Location</th>
+                  <th>Confidence</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="dashAllEventsTableBody">
+                <tr class="empty-row">
+                  <td colspan="7">Loading real-time events...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

@@ -250,10 +250,15 @@ class StudentDatabase:
             sorted_indices = np.argsort(scores)[::-1]
             best_idx = int(sorted_indices[0])
             best_score = float(scores[best_idx])
-            second_score = float(scores[sorted_indices[1]])
-            margin = best_score - second_score
+            candidate_id = self.enrolled_ids[best_idx]
 
-        candidate_id = self.enrolled_ids[best_idx]
+            # Calculate margin against the best scoring DIFFERENT candidate (exclude multiple photos of same student)
+            second_score = 0.0
+            for idx in sorted_indices[1:]:
+                if self.enrolled_ids[idx] != candidate_id:
+                    second_score = float(scores[idx])
+                    break
+            margin = 1.0 if second_score == 0.0 else (best_score - second_score)
         student_info = self.metadata.get(candidate_id, {"name": candidate_id})
 
         # Classification decision logic
@@ -269,6 +274,10 @@ class StudentDatabase:
         """Returns the number of unique registered students."""
         return len(set(self.enrolled_ids))
 
+    def reload(self):
+        """Forces re-indexing of the database directory and updates cache."""
+        self._load_or_index_database()
+
     def register_new_student(self, student_id: str, image: np.ndarray, 
                              metadata: Optional[dict] = None) -> bool:
         """
@@ -283,7 +292,12 @@ class StudentDatabase:
             logger.error("No face detected in enrollment frame.")
             return False
 
-        save_path = student_dir / "front.jpg"
+        existing_photos = [f for f in student_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
+        if not (student_dir / "front.jpg").exists():
+            save_path = student_dir / "front.jpg"
+        else:
+            save_path = student_dir / f"side_{len(existing_photos) + 1}.jpg"
+
         embedding = self.recognizer.extract_embedding(image, faces[0]["raw"])
         cv2.imwrite(str(save_path), image)
 

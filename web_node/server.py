@@ -351,6 +351,20 @@ async def enroll_face(req: EnrollRequest):
     }
 
 
+@app.post("/api/reload-db")
+async def reload_database():
+    """Forces re-indexing of the database directory to detect newly added photos or angles."""
+    global student_db
+    if student_db:
+        student_db.reload()
+        return {
+            "success": True,
+            "message": "Student database reloaded successfully",
+            "enrolled_count": student_db.get_enrolled_count()
+        }
+    return {"success": False, "message": "Database not initialized"}
+
+
 # -----------------------------------------------------------------------------
 # WebSocket: Centralized Dashboard Live Bus
 # -----------------------------------------------------------------------------

@@ -245,6 +245,7 @@ class StudentDatabase:
         if len(scores) == 1:
             best_idx = 0
             best_score = float(scores[0])
+            candidate_id = self.enrolled_ids[0]
             margin = 1.0 # only 1 enrolled candidate, margin is maximal
         else:
             sorted_indices = np.argsort(scores)[::-1]

@@ -617,6 +617,17 @@ async def camera_feed_endpoint(websocket: WebSocket):
                 _, thumb_buf = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 65])
                 thumb_b64 = "data:image/jpeg;base64," + base64.b64encode(thumb_buf).decode("ascii")
 
+                recognized_students = [
+                    {
+                        "student_id": r["student_id"],
+                        "student_name": r["student_name"],
+                        "confidence": round(float(r["confidence"]), 4),
+                        "status": r["status"]
+                    }
+                    for r in recognitions
+                    if r.get("student_id") and r.get("status") in ("VERIFIED", "UNCERTAIN")
+                ]
+
                 # Update active node registry
                 active_nodes[client_cam_id] = {
                     "camera_id": client_cam_id,
@@ -629,6 +640,7 @@ async def camera_feed_endpoint(websocket: WebSocket):
                     "latest_thumbnail": thumb_b64,
                     "total_sightings": dispatcher.total_dispatched,
                     "active_faces": len(faces),
+                    "active_students": recognized_students,
                     "latest_student": recognitions[0]["student_id"] if recognitions else None,
                     "latest_name": recognitions[0]["student_name"] if recognitions else None,
                     "latest_confidence": recognitions[0]["confidence"] if recognitions else 0.0,

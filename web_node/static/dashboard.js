@@ -171,8 +171,17 @@
     }
 
     // 2. If face detection is active on this frame, update node confidence state
-    if (data.active_faces > 0 && data.latest_confidence > 0) {
-      updateNodeDetection(camId, {
+    if (data.active_students && data.active_students.length > 0) {
+      data.active_students.forEach(st => {
+        updateNodeStudent(camId, {
+          confidence: st.confidence,
+          studentName: st.student_name || 'Authorized Student',
+          studentId: st.student_id,
+          status: st.status || 'VERIFIED'
+        });
+      });
+    } else if (data.active_faces > 0 && data.latest_confidence > 0) {
+      updateNodeStudent(camId, {
         confidence: data.latest_confidence,
         studentName: data.latest_name || 'Authorized Student',
         studentId: data.latest_student || '',
@@ -210,7 +219,7 @@
 
     // Trigger detection color change on node
     if (camId) {
-      updateNodeDetection(camId, {
+      updateNodeStudent(camId, {
         confidence: conf,
         studentName: stuName,
         studentId: stuId,
@@ -274,76 +283,164 @@
     }
   }
 
-  function updateNodeDetection(camId, info) {
-    nodeDetectionState[camId] = {
-      confidence: info.confidence,
-      studentName: info.studentName,
+  function updateNodeStudent(camId, info) {
+    if (!nodeDetectionState[camId]) {
+      nodeDetectionState[camId] = {};
+    }
+
+    const key = info.studentId || info.studentName;
+    nodeDetectionState[camId][key] = {
       studentId: info.studentId,
+      studentName: info.studentName,
+      confidence: info.confidence,
       status: info.status,
       lastSeenTime: Date.now()
     };
 
-    // Apply color change to SVG node directly
-    const nodeEl = document.getElementById(`topo-node-wrap-${camId}`);
-    if (nodeEl) {
-      const shade = getConfidenceShade(info.confidence);
-      const circleEl = nodeEl.querySelector('.node-center-circle');
-      const pulseEl = nodeEl.querySelector('.node-pulse-ring');
-      const badgeText = nodeEl.querySelector('.node-badge-text');
-      const badgeWrap = nodeEl.querySelector('.node-detect-badge');
+    renderNodeBadges(camId);
+  }
 
+  function renderNodeBadges(camId) {
+    const nodeEl = document.getElementById(`topo-node-wrap-${camId}`);
+    if (!nodeEl) return;
+
+    const studentsMap = nodeDetectionState[camId] || {};
+    const students = Object.values(studentsMap);
+
+    const circleEl = nodeEl.querySelector('.node-center-circle');
+    const pulseEl = nodeEl.querySelector('.node-pulse-ring');
+    const badgesLayer = nodeEl.querySelector('.node-badges-layer');
+
+    if (students.length === 0) {
+      const shade = getConfidenceShade(0);
       if (circleEl) {
         circleEl.setAttribute('fill', shade.fill);
         circleEl.setAttribute('stroke', shade.stroke);
-        if (shade.filter !== 'none') {
-          circleEl.setAttribute('filter', shade.filter);
-        } else {
-          circleEl.removeAttribute('filter');
-        }
+        circleEl.removeAttribute('filter');
       }
+      if (pulseEl) pulseEl.style.display = 'none';
+      if (badgesLayer) badgesLayer.innerHTML = '';
+      return;
+    }
 
-      if (pulseEl) {
-        pulseEl.setAttribute('stroke', shade.stroke);
-        pulseEl.style.display = 'block';
-      }
+    // Sort students by confidence descending
+    students.sort((a, b) => b.confidence - a.confidence);
 
-      if (badgeWrap && badgeText) {
-        badgeText.textContent = `${info.studentName} [${Math.round(info.confidence * 100)}%]`;
-        badgeWrap.style.display = 'block';
+    const maxConf = students[0].confidence;
+    const shade = getConfidenceShade(maxConf);
+
+    if (circleEl) {
+      circleEl.setAttribute('fill', shade.fill);
+      circleEl.setAttribute('stroke', shade.stroke);
+      if (shade.filter !== 'none') {
+        circleEl.setAttribute('filter', shade.filter);
+      } else {
+        circleEl.removeAttribute('filter');
       }
     }
 
+    if (pulseEl) {
+      pulseEl.setAttribute('stroke', shade.stroke);
+      pulseEl.style.display = 'block';
+    }
+
+    // Render unified expanding capsule box
+    const visibleStudents = students.slice(0, 4);
+    const overflowCount = students.length - visibleStudents.length;
+
+    const rowHeight = 22;
+    const padY = 8;
+    const totalH = padY * 2 + (visibleStudents.length * rowHeight) + (overflowCount > 0 ? 18 : 0);
+
+    // Calculate dynamic capsule width based on longest student name
+    const maxLen = Math.max(...visibleStudents.map(s => (s.studentName || s.studentId).length));
+    const capsuleW = Math.min(250, Math.max(160, maxLen * 8 + 60));
+    const capsuleX = -capsuleW / 2;
+    const capsuleY = -38 - totalH; // sits neatly above the camera circle
+
+    let capsuleRowsHtml = '';
+    visibleStudents.forEach((st, idx) => {
+      const rowY = capsuleY + padY + (idx * rowHeight) + 15;
+      const stShade = getConfidenceShade(st.confidence);
+      const confPct = Math.round(st.confidence * 100);
+
+      // Divider line between student rows
+      let dividerHtml = '';
+      if (idx > 0) {
+        const divY = capsuleY + padY + (idx * rowHeight);
+        dividerHtml = `<line x1="${capsuleX + 12}" y1="${divY}" x2="${capsuleX + capsuleW - 12}" y2="${divY}" stroke="rgba(255, 255, 255, 0.09)" stroke-width="1" />`;
+      }
+
+      capsuleRowsHtml += `
+        ${dividerHtml}
+        <g class="capsule-student-row">
+          <text x="0" y="${rowY}" text-anchor="middle" font-size="10.5" font-family="'JetBrains Mono', monospace" font-weight="700" fill="${stShade.textColor}">
+            👤 ${st.studentName} [${confPct}%]
+          </text>
+        </g>
+      `;
+    });
+
+    if (overflowCount > 0) {
+      const overY = capsuleY + padY + (visibleStudents.length * rowHeight) + 13;
+      const divY = capsuleY + padY + (visibleStudents.length * rowHeight);
+      capsuleRowsHtml += `
+        <line x1="${capsuleX + 12}" y1="${divY}" x2="${capsuleX + capsuleW - 12}" y2="${divY}" stroke="rgba(0, 229, 255, 0.2)" stroke-width="1" />
+        <text x="0" y="${overY}" text-anchor="middle" font-size="9" font-family="'Inter', sans-serif" font-weight="700" fill="#00e5ff">
+          +${overflowCount} more student${overflowCount > 1 ? 's' : ''} detected
+        </text>
+      `;
+    }
+
+    const capsuleHtml = `
+      <g class="node-capsule-wrap">
+        <!-- Unified Expanding Capsule Box -->
+        <rect class="node-capsule-box" 
+              x="${capsuleX}" y="${capsuleY}" 
+              width="${capsuleW}" height="${totalH}" 
+              rx="13" ry="13"
+              fill="rgba(15, 23, 42, 0.95)" 
+              stroke="${shade.stroke}" 
+              stroke-width="1.5" 
+              filter="drop-shadow(0 4px 14px rgba(0,0,0,0.7))" />
+
+        <!-- Anchor Pointer Stem pointing to camera node -->
+        <polygon points="-6,${-38} 0,${-33} 6,${-38}" 
+                 fill="rgba(15, 23, 42, 0.95)" 
+                 stroke="${shade.stroke}" 
+                 stroke-width="1.5" />
+
+        <!-- Student Rows Appended Inside Capsule -->
+        ${capsuleRowsHtml}
+      </g>
+    `;
+
+    if (badgesLayer) {
+      badgesLayer.innerHTML = capsuleHtml;
+    }
+
+    // Update bottom ticker with all student names
+    const namesList = students.map(s => `<strong>${s.studentName}</strong> [${Math.round(s.confidence * 100)}%]`).join(', ');
     topoTransitionTicker.innerHTML = `
-      <span class="ticker-highlight">● Sighting:</span> 
-      <strong>${info.studentName}</strong> detected at <code>${camId}</code> with <strong>${Math.round(info.confidence * 100)}%</strong> confidence.
+      <span class="ticker-highlight">● Active at ${camId}:</span> ${namesList}
     `;
   }
 
   function decayNodeDetections() {
     const now = Date.now();
-    let updatedAny = false;
 
     for (const camId in nodeDetectionState) {
-      const state = nodeDetectionState[camId];
-      if (state && (now - state.lastSeenTime > 6000)) {
-        // Return back to standby gray
-        delete nodeDetectionState[camId];
-        const nodeEl = document.getElementById(`topo-node-wrap-${camId}`);
-        if (nodeEl) {
-          const shade = getConfidenceShade(0);
-          const circleEl = nodeEl.querySelector('.node-center-circle');
-          const pulseEl = nodeEl.querySelector('.node-pulse-ring');
-          const badgeWrap = nodeEl.querySelector('.node-detect-badge');
-
-          if (circleEl) {
-            circleEl.setAttribute('fill', shade.fill);
-            circleEl.setAttribute('stroke', shade.stroke);
-            circleEl.removeAttribute('filter');
+      const studentsMap = nodeDetectionState[camId];
+      if (studentsMap) {
+        let countBefore = Object.keys(studentsMap).length;
+        for (const stuKey in studentsMap) {
+          if (now - studentsMap[stuKey].lastSeenTime > 6500) {
+            delete studentsMap[stuKey];
           }
-          if (pulseEl) pulseEl.style.display = 'none';
-          if (badgeWrap) badgeWrap.style.display = 'none';
         }
-        updatedAny = true;
+        if (countBefore !== Object.keys(studentsMap).length) {
+          renderNodeBadges(camId);
+        }
       }
     }
 
@@ -432,23 +529,17 @@
     let nodesHtml = '';
     nodes.forEach(node => {
       const pos = nodeCoordinates[node.camera_id] || { x: 500, y: 170 };
-      const state = nodeDetectionState[node.camera_id] || {};
-      const shade = getConfidenceShade(state.confidence);
-      const isDetected = state.confidence !== undefined && state.confidence > 0;
-      const badgeStyle = isDetected ? 'display: block;' : 'display: none;';
-      const badgeText = isDetected ? `${state.studentName} [${Math.round(state.confidence * 100)}%]` : '';
-      const filterAttr = shade.filter !== 'none' ? `filter="${shade.filter}"` : '';
 
       nodesHtml += `
         <g id="topo-node-wrap-${node.camera_id}" class="topo-node-group" transform="translate(${pos.x}, ${pos.y})">
           <!-- Animated Radar Wave (When Face is Detected) -->
-          <circle class="node-pulse-ring" r="38" stroke="${shade.stroke}" stroke-width="2" fill="none" style="${isDetected ? 'display:block;' : 'display:none;'}"></circle>
+          <circle class="node-pulse-ring" r="38" stroke="#00ff88" stroke-width="2" fill="none" style="display:none;"></circle>
           
           <!-- Outer Ring -->
           <circle class="node-outer-ring" r="32" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.5" fill="none"></circle>
           
           <!-- Core Center Circle (Changes Gray -> Green -> Greener) -->
-          <circle class="node-center-circle" r="26" fill="${shade.fill}" stroke="${shade.stroke}" stroke-width="2.5" ${filterAttr}></circle>
+          <circle class="node-center-circle" r="26" fill="#1e2632" stroke="#475569" stroke-width="2.5"></circle>
           
           <!-- Camera Glyphs -->
           <text class="node-icon" y="6" text-anchor="middle" font-size="14" fill="#ffffff">📹</text>
@@ -459,16 +550,18 @@
           <!-- Node Location Sub-label -->
           <text class="node-label-loc" y="62" text-anchor="middle">${node.location || 'Camera Station'}</text>
 
-          <!-- Floating Detection Badge -->
-          <g class="node-detect-badge" transform="translate(0, -42)" style="${badgeStyle}">
-            <rect x="-80" y="-12" width="160" height="24" rx="12" fill="#0f172a" stroke="${shade.stroke}" stroke-width="1.5"></rect>
-            <text class="node-badge-text" text-anchor="middle" y="4" font-size="11" font-weight="700" fill="#00ff88">${badgeText}</text>
-          </g>
+          <!-- Dynamic Multi-Student Badges Layer (Stacked Non-Conflicting Pills) -->
+          <g class="node-badges-layer"></g>
         </g>
       `;
     });
 
     topoNodesLayer.innerHTML = nodesHtml;
+
+    // Immediately update badges and colors for each node
+    nodes.forEach(node => {
+      renderNodeBadges(node.camera_id);
+    });
 
     // 2. Render Existing Edges
     renderEdges();

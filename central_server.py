@@ -10,6 +10,7 @@ import sqlite3
 import asyncio
 import datetime
 import logging
+from contextlib import closing
 from pathlib import Path
 from typing import Dict, Any, Optional
 import websockets
@@ -38,7 +39,9 @@ class CentralEventStore:
         self._init_sqlite()
 
     def _init_sqlite(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path, timeout=5.0)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sightings (
@@ -66,7 +69,7 @@ class CentralEventStore:
 
     def is_duplicate(self, event_id: str) -> bool:
         """Checks if event_id already exists in store."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path, timeout=5.0)) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM sightings WHERE event_id = ?", (event_id,))
             return cursor.fetchone() is not None
@@ -87,7 +90,7 @@ class CentralEventStore:
         bbox = event.get("bbox", {})
         
         # 1. Insert into indexed SQLite
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path, timeout=5.0)) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO sightings (
@@ -127,7 +130,7 @@ class CentralEventStore:
         """
         Retrieves chronological sightings across all cameras for a student.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path, timeout=5.0)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             

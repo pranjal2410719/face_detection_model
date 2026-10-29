@@ -309,11 +309,11 @@
 
     ws.onopen = () => {
       wsConnected = true;
-      centralLinkStatus.innerHTML = '<span class="chip-dot"></span><span class="chip-text">CENTRAL RECEIVER: CONNECTED</span>';
+      centralLinkStatus.innerHTML = '<span class="chip-dot"></span><span class="chip-text">NODE STREAM: ACTIVE</span>';
       centralLinkStatus.style.borderColor = 'rgba(0, 230, 118, 0.4)';
       centralLinkStatus.style.color = '#00e676';
       sendNodeConfig();
-      logDataSent('SUCCESS', `Connected to Central Receiver WebSocket: ${wsUrl}`);
+      logDataSent('SUCCESS', `Connected to Web Camera Node Pipeline: ${wsUrl}`);
     };
 
     ws.onmessage = (event) => {
@@ -329,11 +329,11 @@
 
     ws.onclose = () => {
       wsConnected = false;
-      centralLinkStatus.innerHTML = '<span class="chip-dot"></span><span class="chip-text">CENTRAL RECEIVER: OFFLINE</span>';
+      centralLinkStatus.innerHTML = '<span class="chip-dot"></span><span class="chip-text">NODE STREAM: OFFLINE</span>';
       centralLinkStatus.style.borderColor = 'rgba(255, 61, 0, 0.4)';
       centralLinkStatus.style.color = '#ff3d00';
       isSendingFrame = false;
-      logDataSent('WARN', 'Disconnected from Central Receiver. Reconnecting in 2s...');
+      logDataSent('WARN', 'Disconnected from Web Camera Node. Reconnecting in 2s...');
 
       if (isRunning) {
         setTimeout(connectWebSocket, 2000);
@@ -413,6 +413,20 @@
   // 4. Server Results & Deduplicated Student Sighting Log
   // ---------------------------------------------------------------------------
   function handleServerMessage(data) {
+    if (data.type === 'EVENT_ACK') {
+      logDataSent(
+        'SUCCESS',
+        `[ACK CONFIRMED] Central Receiver persisted Sighting [${data.event_id}] for Student [${data.student_id}] @ ${data.server_received_at}`
+      );
+      const badge = eventBanner.querySelector('.banner-badge');
+      if (badge) {
+        badge.textContent = 'ACK CONFIRMED';
+        badge.style.background = 'rgba(0, 230, 118, 0.4)';
+        badge.style.borderColor = '#00e676';
+      }
+      return;
+    }
+
     if (data.type === 'CONFIG_ACK') {
       if (data.connected_nodes) {
         renderConnectedNodes(data.connected_nodes);
@@ -443,6 +457,19 @@
         metricEnrolled.textContent = data.enrolled_count;
       }
 
+      // 2.1 Central Receiver Link Status from edge dispatcher
+      if (data.central_receiver_online !== undefined) {
+        if (data.central_receiver_online) {
+          centralLinkStatus.innerHTML = '<span class="chip-dot"></span><span class="chip-text">CENTRAL RECEIVER: ONLINE</span>';
+          centralLinkStatus.style.borderColor = 'rgba(0, 230, 118, 0.4)';
+          centralLinkStatus.style.color = '#00e676';
+        } else {
+          centralLinkStatus.innerHTML = '<span class="chip-dot" style="background:#ffb300;box-shadow:0 0 6px #ffb300;"></span><span class="chip-text" style="color:#ffb300;">CENTRAL: OFFLINE (LOCAL QUEUE)</span>';
+          centralLinkStatus.style.borderColor = 'rgba(255, 179, 0, 0.4)';
+          centralLinkStatus.style.color = '#ffb300';
+        }
+      }
+
       // 3. Process recognitions with Deduplicated Student Log
       // "verify multiple times but show only once if the student appears"
       if (data.recognitions && data.recognitions.length > 0) {
@@ -456,11 +483,12 @@
       // 4. Process Data Sent Receipts
       if (data.data_sent_receipts && data.data_sent_receipts.length > 0) {
         data.data_sent_receipts.forEach(rcpt => {
+          const isQueued = rcpt.status === 'QUEUED_LOCAL';
           logDataSent(
-            'SENT',
-            `[ACK 200 OK] Dispatched Sighting [${rcpt.event_id}] ➔ ${rcpt.target} | Student: ${rcpt.student_name} (${rcpt.student_id}) | Latency: ${rcpt.latency_ms}ms`
+            isQueued ? 'WARN' : 'SENT',
+            `[${rcpt.status}] Sighting [${rcpt.event_id}] ➔ ${rcpt.target} | Student: ${rcpt.student_name} (${rcpt.student_id}) | Conf: ${rcpt.confidence}%`
           );
-          triggerAlertBanner(rcpt.student_id, rcpt.student_name, rcpt.confidence);
+          triggerAlertBanner(rcpt.student_id, rcpt.student_name, rcpt.confidence, rcpt.status);
         });
       }
 
@@ -531,13 +559,25 @@
     setTimeout(() => tr.classList.remove('flash-row'), 400);
   }
 
-  function triggerAlertBanner(stuId, stuName, conf) {
-    bannerDesc.textContent = `Student [${stuId}] ${stuName} • ${conf}% Match → Sent to Central Receiver`;
-    eventBanner.classList.add('active');
+  function triggerAlertBanner(stuId, stuName, conf, status = 'DISPATCHED') {
+    bannerDesc.textContent = `Student [${stuId}] ${stuName} • ${conf}% Match → Central Audit Receiver`;
+    const badge = eventBanner.querySelector('.banner-badge');
+    if (badge) {
+      if (status === 'QUEUED_LOCAL') {
+        badge.textContent = 'LOCAL QUEUE';
+        badge.style.background = 'rgba(255, 179, 0, 0.25)';
+        badge.style.borderColor = '#ffb300';
+      } else {
+        badge.textContent = 'DISPATCHED';
+        badge.style.background = 'rgba(0, 229, 255, 0.25)';
+        badge.style.borderColor = '#00e5ff';
+      }
+    }
+    eventBanner.classList.add('show');
 
     if (bannerTimer) clearTimeout(bannerTimer);
     bannerTimer = setTimeout(() => {
-      eventBanner.classList.remove('active');
+      eventBanner.classList.remove('show');
     }, 2800);
   }
 
@@ -596,16 +636,21 @@
   // ---------------------------------------------------------------------------
   // 7. Face Enrollment Modal & Actions
   // ---------------------------------------------------------------------------
-  function openEnrollmentModal() {
+  async function openEnrollmentModal() {
     if (!isRunning) {
-      alert('Start the camera node first so a face can be captured.');
-      return;
+      await startCameraNode();
+      // Brief pause to allow the camera sensor to produce a warm frame
+      await new Promise(r => setTimeout(r, 600));
     }
 
-    enrollCanvas.width = captureCanvas.width;
-    enrollCanvas.height = captureCanvas.height;
+    enrollCanvas.width = captureCanvas.width || 640;
+    enrollCanvas.height = captureCanvas.height || 480;
     const eCtx = enrollCanvas.getContext('2d');
-    eCtx.drawImage(captureCanvas, 0, 0);
+    if (captureCanvas.width > 0) {
+      eCtx.drawImage(captureCanvas, 0, 0);
+    } else if (video && video.videoWidth > 0) {
+      eCtx.drawImage(video, 0, 0, enrollCanvas.width, enrollCanvas.height);
+    }
 
     enrollError.style.display = 'none';
     enrollModal.classList.add('active');
@@ -704,6 +749,23 @@
     btnCloseModal.addEventListener('click', closeEnrollmentModal);
     btnCancelEnroll.addEventListener('click', closeEnrollmentModal);
     btnSubmitEnroll.addEventListener('click', submitEnrollment);
+
+    // Sidebar Mobile Toggle
+    const btnSidebarToggle = document.getElementById('btnSidebarToggle');
+    const dashSidebar = document.getElementById('dashSidebar');
+    if (btnSidebarToggle && dashSidebar) {
+      btnSidebarToggle.addEventListener('click', () => {
+        dashSidebar.classList.toggle('sidebar-open');
+      });
+      // Close sidebar when clicking outside on mobile
+      document.addEventListener('click', (e) => {
+        if (dashSidebar.classList.contains('sidebar-open') &&
+            !dashSidebar.contains(e.target) &&
+            e.target !== btnSidebarToggle) {
+          dashSidebar.classList.remove('sidebar-open');
+        }
+      });
+    }
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && enrollModal.classList.contains('active')) {

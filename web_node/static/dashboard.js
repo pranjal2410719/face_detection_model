@@ -48,10 +48,13 @@
   // ---------------------------------------------------------------------------
   async function init() {
     setupTabSwitching();
+    setupSidebarAndNav();
+    setupModal();
     await fetchStats();
     await fetchConnectedNodes();
     await fetchTrajectories();
     await fetchEvents();
+    await fetchEnrolledStudents();
     connectDashboardWebSocket();
 
     // Auto-refresh interval (every 4s)
@@ -59,6 +62,7 @@
       fetchStats();
       fetchConnectedNodes();
       fetchEvents();
+      fetchEnrolledStudents();
       decayNodeDetections();
     }, 4000);
 
@@ -120,6 +124,9 @@
           handleNewSighting(msg.data);
           fetchStats();
           fetchEvents();
+        } else if (msg.type === 'EVENT_ACK') {
+          fetchStats();
+          fetchEvents();
         } else if (msg.type === 'NODE_OFFLINE') {
           if (activeNodesMap[msg.data.camera_id]) {
             activeNodesMap[msg.data.camera_id].online = false;
@@ -170,23 +177,27 @@
       return;
     }
 
-    // 2. If face detection is active on this frame, update node confidence state
+    // 2. If face detection is active on this frame, update node state STRICTLY for VERIFIED students
     if (data.active_students && data.active_students.length > 0) {
       data.active_students.forEach(st => {
-        updateNodeStudent(camId, {
-          confidence: st.confidence,
-          studentName: st.student_name || 'Authorized Student',
-          studentId: st.student_id,
-          status: st.status || 'VERIFIED'
-        });
+        if (st.status === 'VERIFIED' && st.student_id && st.student_id !== 'UNKNOWN') {
+          updateNodeStudent(camId, {
+            confidence: st.confidence,
+            studentName: st.student_name || 'Authorized Student',
+            studentId: st.student_id,
+            status: 'VERIFIED'
+          });
+        }
       });
     } else if (data.active_faces > 0 && data.latest_confidence > 0) {
-      updateNodeStudent(camId, {
-        confidence: data.latest_confidence,
-        studentName: data.latest_name || 'Authorized Student',
-        studentId: data.latest_student || '',
-        status: data.latest_status || 'VERIFIED'
-      });
+      if (data.latest_status === 'VERIFIED' && data.latest_student && data.latest_student !== 'UNKNOWN') {
+        updateNodeStudent(camId, {
+          confidence: data.latest_confidence,
+          studentName: data.latest_name || 'Authorized Student',
+          studentId: data.latest_student,
+          status: 'VERIFIED'
+        });
+      }
     }
 
     // 3. Update Camera Card (without DOM flickering)
@@ -215,19 +226,25 @@
     const camId = sighting.camera_id;
     const stuId = sighting.student_id;
     const stuName = sighting.student_name || 'Student';
+    const status = sighting.status;
     const conf = (sighting.confidence || 75) / 100.0;
 
-    // Trigger detection color change on node
+    // Strict Rule: Trajectories & dynamic map detections are ONLY for VERIFIED users
+    if (status !== 'VERIFIED' || !stuId || stuId === 'UNKNOWN') {
+      return;
+    }
+
+    // Trigger detection color change on node for verified users
     if (camId) {
       updateNodeStudent(camId, {
         confidence: conf,
         studentName: stuName,
         studentId: stuId,
-        status: sighting.status || 'VERIFIED'
+        status: 'VERIFIED'
       });
     }
 
-    // Check cross-camera transition
+    // Check cross-camera transition for verified user
     const prevCam = studentLastCamera[stuId];
     if (prevCam && prevCam !== camId && activeNodesMap[prevCam]) {
       addTransitionEdge(prevCam, camId, stuId, stuName);
@@ -284,16 +301,21 @@
   }
 
   function updateNodeStudent(camId, info) {
+    // Strict Guard: ONLY verified users trigger node detections on the map
+    if (!info.studentId || info.studentId === 'UNKNOWN' || info.status !== 'VERIFIED') {
+      return;
+    }
+
     if (!nodeDetectionState[camId]) {
       nodeDetectionState[camId] = {};
     }
 
-    const key = info.studentId || info.studentName;
+    const key = info.studentId;
     nodeDetectionState[camId][key] = {
       studentId: info.studentId,
       studentName: info.studentName,
       confidence: info.confidence,
-      status: info.status,
+      status: 'VERIFIED',
       lastSeenTime: Date.now()
     };
 
@@ -305,7 +327,8 @@
     if (!nodeEl) return;
 
     const studentsMap = nodeDetectionState[camId] || {};
-    const students = Object.values(studentsMap);
+    // Strict Filter: Only verified users in the capsule box
+    const students = Object.values(studentsMap).filter(st => st.status === 'VERIFIED' && st.studentId && st.studentId !== 'UNKNOWN');
 
     const circleEl = nodeEl.querySelector('.node-center-circle');
     const pulseEl = nodeEl.querySelector('.node-pulse-ring');
@@ -455,21 +478,31 @@
   }
 
   function addTransitionEdge(fromCam, toCam, studentId, studentName) {
-    // Add to active transition edges
-    activeTransitions.push({
-      from: fromCam,
-      to: toCam,
-      studentId: studentId,
-      studentName: studentName,
-      timestamp: Date.now()
-    });
+    if (!fromCam || !toCam || fromCam === toCam) return;
+    if (!studentId || studentId === 'UNKNOWN') return;
+
+    // Deduplicate: If an edge already exists between these two nodes, bump timestamp
+    const existing = activeTransitions.find(t => t.from === fromCam && t.to === toCam);
+    if (existing) {
+      existing.studentId = studentId;
+      existing.studentName = studentName;
+      existing.timestamp = Date.now();
+    } else {
+      activeTransitions.push({
+        from: fromCam,
+        to: toCam,
+        studentId: studentId,
+        studentName: studentName,
+        timestamp: Date.now()
+      });
+    }
 
     renderEdges();
 
     // Update status ticker
     topoTransitionTicker.innerHTML = `
       <span class="ticker-transition-pill">➔ TRAJECTORY:</span>
-      <strong>${studentName}</strong> moved from <code>${fromCam}</code> ➔ <code>${toCam}</code>!
+      <strong>${studentName}</strong> transit: <code class="code-id">${fromCam}</code> ➔ <code class="code-id">${toCam}</code>
     `;
   }
 
@@ -485,24 +518,24 @@
     }
 
     if (count === 2) {
-      nodeCoordinates[nodes[0].camera_id] = { x: 280, y: 170 };
-      nodeCoordinates[nodes[1].camera_id] = { x: 720, y: 170 };
+      nodeCoordinates[nodes[0].camera_id] = { x: 260, y: 170 };
+      nodeCoordinates[nodes[1].camera_id] = { x: 740, y: 170 };
       return;
     }
 
     if (count === 3) {
-      nodeCoordinates[nodes[0].camera_id] = { x: 220, y: 170 };
-      nodeCoordinates[nodes[1].camera_id] = { x: 500, y: 130 };
-      nodeCoordinates[nodes[2].camera_id] = { x: 780, y: 170 };
+      nodeCoordinates[nodes[0].camera_id] = { x: 200, y: 170 };
+      nodeCoordinates[nodes[1].camera_id] = { x: 500, y: 140 };
+      nodeCoordinates[nodes[2].camera_id] = { x: 800, y: 170 };
       return;
     }
 
-    // N nodes: evenly spaced with subtle alternating height
+    // N nodes: evenly spaced across horizontal canvas
     const padX = 140;
     const step = (1000 - 2 * padX) / Math.max(1, count - 1);
     nodes.forEach((n, idx) => {
       const x = padX + idx * step;
-      const y = 170 + (idx % 2 === 0 ? -30 : 30);
+      const y = 170 + (idx % 2 === 0 ? -25 : 25);
       nodeCoordinates[n.camera_id] = { x, y };
     });
   }
@@ -525,7 +558,7 @@
     nodes.sort((a, b) => a.camera_id.localeCompare(b.camera_id));
     calculateNodePositions(nodes);
 
-    // 1. Render Nodes
+    // 1. Render Nodes with high-contrast, beautiful UI
     let nodesHtml = '';
     nodes.forEach(node => {
       const pos = nodeCoordinates[node.camera_id] || { x: 500, y: 170 };
@@ -535,20 +568,32 @@
           <!-- Animated Radar Wave (When Face is Detected) -->
           <circle class="node-pulse-ring" r="38" stroke="#00ff88" stroke-width="2" fill="none" style="display:none;"></circle>
           
-          <!-- Outer Ring -->
-          <circle class="node-outer-ring" r="32" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.5" fill="none"></circle>
+          <!-- Outer Circle Ring -->
+          <circle class="node-outer-ring" r="32" stroke="rgba(255, 255, 255, 0.22)" stroke-width="1.5" fill="none"></circle>
           
-          <!-- Core Center Circle (Changes Gray -> Green -> Greener) -->
-          <circle class="node-center-circle" r="26" fill="#1e2632" stroke="#475569" stroke-width="2.5"></circle>
+          <!-- Core Center Circle -->
+          <circle class="node-center-circle" r="26" fill="#131b2e" stroke="#334155" stroke-width="2.5"></circle>
           
           <!-- Camera Glyphs -->
           <text class="node-icon" y="6" text-anchor="middle" font-size="14" fill="#ffffff">📹</text>
           
-          <!-- Node ID Label -->
-          <text class="node-label-id" y="48" text-anchor="middle">${node.camera_id}</text>
-          
-          <!-- Node Location Sub-label -->
-          <text class="node-label-loc" y="62" text-anchor="middle">${node.location || 'Camera Station'}</text>
+          <!-- Dedicated High-Contrast Node Info Card -->
+          <g class="node-plate" transform="translate(0, 36)">
+            <!-- Card Backdrop -->
+            <rect class="node-card-bg" x="-75" y="0" width="150" height="42" rx="8" ry="8"></rect>
+            
+            <!-- Online Indicator Dot -->
+            <circle class="node-status-dot" cx="-56" cy="15" r="3.5"></circle>
+            
+            <!-- Node ID Label (Bold Crisp White) -->
+            <text class="node-label-id" x="-46" y="19" text-anchor="start">${node.camera_id}</text>
+            
+            <!-- Online Status Text -->
+            <text class="node-status-text" x="58" y="19" text-anchor="end">ONLINE</text>
+            
+            <!-- Node Location Sub-label (Crisp Slate Gray) -->
+            <text class="node-label-loc" x="0" y="33" text-anchor="middle">${node.location || 'Camera Station'}</text>
+          </g>
 
           <!-- Dynamic Multi-Student Badges Layer (Stacked Non-Conflicting Pills) -->
           <g class="node-badges-layer"></g>
@@ -576,24 +621,40 @@
 
       if (!p1 || !p2) return;
 
-      // Compute trimmed arrow endpoints
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist < 10) return;
+      if (dist < 30) return;
 
-      const rStart = 34;
-      const rEnd = 38;
+      // Determine arch curvature based on horizontal direction
+      // Left-to-right arches upward (negative Y offset)
+      // Right-to-left arches downward (positive Y offset)
+      // This completely prevents forward/backward arrows from overlapping!
+      const archSign = dx >= 0 ? -1 : 1;
+      const archHeight = Math.min(65, Math.max(35, dist * 0.18));
+      
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2 + archSign * archHeight;
 
-      const x1 = p1.x + (dx * rStart) / dist;
-      const y1 = p1.y + (dy * rStart) / dist;
-      const x2 = p2.x - (dx * rEnd) / dist;
-      const y2 = p2.y - (dy * rEnd) / dist;
+      // Trim start point (p1 -> mid)
+      const dx1 = midX - p1.x;
+      const dy1 = midY - p1.y;
+      const d1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+      const rStart = 38;
+      const x1 = p1.x + (dx1 * rStart) / d1;
+      const y1 = p1.y + (dy1 * rStart) / d1;
 
-      // Arch control point for beautiful curved trajectory
-      const midX = (x1 + x2) / 2;
-      const midY = (y1 + y2) / 2 - 35;
+      // Trim end point (mid -> p2)
+      // Note: Trimming along (mid -> p2) ensures the arrow enters p2 pointing directly into the node!
+      const dx2 = p2.x - midX;
+      const dy2 = p2.y - midY;
+      const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+      const rEnd = 44; // keeps arrowhead right outside destination circle
+      const x2 = p2.x - (dx2 * rEnd) / d2;
+      const y2 = p2.y - (dy2 * rEnd) / d2;
+
+      const studentDisplay = trans.studentName || trans.studentId || 'Verified Sighting';
 
       edgesHtml += `
         <g class="edge-group">
@@ -603,10 +664,11 @@
                 marker-end="url(#edgeArrowGreen)"></path>
 
           <!-- Floating Movement Tag on Edge -->
-          <g transform="translate(${midX}, ${midY - 10})">
-            <rect x="-70" y="-10" width="140" height="20" rx="4" fill="rgba(6, 95, 70, 0.9)" stroke="#00ff88" stroke-width="1"></rect>
-            <text text-anchor="middle" y="4" font-size="10" font-family="'JetBrains Mono', monospace" font-weight="700" fill="#ffffff">
-              ➔ ${trans.studentName || trans.studentId}
+          <g class="edge-tag" transform="translate(${midX}, ${midY})">
+            <rect x="-65" y="-12" width="130" height="24" rx="12" 
+                  fill="#061f14" stroke="#00ff88" stroke-width="1.5"></rect>
+            <text text-anchor="middle" y="4" font-size="10" font-family="'JetBrains Mono', monospace" font-weight="700" fill="#00ff88">
+              ➔ ${studentDisplay}
             </text>
           </g>
         </g>
@@ -622,7 +684,8 @@
       if (!res.ok) return;
       const trajs = await res.json();
       trajs.forEach(t => {
-        if (t.student_id && t.current_camera) {
+        // Enforce verified student check
+        if (t.student_id && t.student_id !== 'UNKNOWN' && t.current_camera) {
           studentLastCamera[t.student_id] = t.current_camera;
         }
       });
@@ -717,6 +780,11 @@
       statActiveNodes.textContent = stats.active_cameras || 0;
       statUniqueVerified.textContent = stats.unique_verified || 0;
       statTotalSightings.textContent = stats.total_sightings || 0;
+
+      const navNodeBadge = document.getElementById('navNodeBadge');
+      if (navNodeBadge) navNodeBadge.textContent = stats.active_cameras || 0;
+      const navVerifiedBadge = document.getElementById('navVerifiedBadge');
+      if (navVerifiedBadge) navVerifiedBadge.textContent = stats.unique_verified || 0;
     } catch (e) {
       console.warn('Could not fetch dashboard stats:', e);
     }
@@ -825,6 +893,120 @@
     });
 
     dashAllEventsTableBody.innerHTML = html;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. Enrolled Students Biometric Directory
+  // ---------------------------------------------------------------------------
+  async function fetchEnrolledStudents() {
+    try {
+      const res = await fetch('/api/node-info');
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = data.enrolled_students || [];
+      const count = data.enrolled_count !== undefined ? data.enrolled_count : list.length;
+
+      const dashEnrolledBadge = document.getElementById('dashEnrolledBadge');
+      if (dashEnrolledBadge) dashEnrolledBadge.textContent = `${count} Students Enrolled`;
+
+      const navEnrolledBadge = document.getElementById('navEnrolledBadge');
+      if (navEnrolledBadge) navEnrolledBadge.textContent = count;
+
+      renderEnrolledGrid(list);
+    } catch (e) {
+      console.warn('Could not fetch enrolled students:', e);
+    }
+  }
+
+  function renderEnrolledGrid(students) {
+    const grid = document.getElementById('dashEnrolledGrid');
+    if (!grid) return;
+
+    if (!students || students.length === 0) {
+      grid.innerHTML = '<div class="empty-matrix-msg">No students registered yet in biometric directory.</div>';
+      return;
+    }
+
+    grid.innerHTML = students.map(s => `
+      <div class="student-card">
+        <div class="student-avatar">👤</div>
+        <div class="student-info">
+          <h4>${s.name || s.student_id}</h4>
+          <div class="student-id-tag">ID: ${s.student_id}</div>
+          <div class="student-meta">${s.department || 'Engineering'} • Batch ${s.batch || '2026'}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ---------------------------------------------------------------------------
+  // 7. Sidebar Navigation & Smooth Section Scrolling
+  // ---------------------------------------------------------------------------
+  function setupSidebarAndNav() {
+    const btnSidebarToggle = document.getElementById('btnSidebarToggle');
+    const dashSidebar = document.getElementById('dashSidebar');
+    if (btnSidebarToggle && dashSidebar) {
+      btnSidebarToggle.addEventListener('click', () => {
+        dashSidebar.classList.toggle('sidebar-open');
+      });
+      document.addEventListener('click', (e) => {
+        if (dashSidebar.classList.contains('sidebar-open') &&
+            !dashSidebar.contains(e.target) &&
+            e.target !== btnSidebarToggle) {
+          dashSidebar.classList.remove('sidebar-open');
+        }
+      });
+    }
+
+    const navLinks = document.querySelectorAll('.dash-sidebar .nav-link');
+    const topbarViewTitle = document.getElementById('topbarViewTitle');
+
+    navLinks.forEach(link => {
+      const href = link.getAttribute('href');
+      if (href && href.startsWith('#')) {
+        link.addEventListener('click', (e) => {
+          const targetId = href.substring(1);
+          const targetEl = document.getElementById(targetId);
+          if (targetEl) {
+            e.preventDefault();
+            navLinks.forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            if (topbarViewTitle) {
+              const textSpan = link.querySelector('.nav-text');
+              if (textSpan) topbarViewTitle.textContent = textSpan.textContent;
+            }
+
+            if (history.replaceState) {
+              history.replaceState(null, null, href);
+            }
+
+            if (dashSidebar && dashSidebar.classList.contains('sidebar-open')) {
+              dashSidebar.classList.remove('sidebar-open');
+            }
+          }
+        });
+      }
+    });
+
+    // Check URL hash on load
+    const hash = window.location.hash;
+    if (hash) {
+      const activeLink = document.querySelector(`.dash-sidebar .nav-link[href="${hash}"]`);
+      if (activeLink) {
+        navLinks.forEach(l => l.classList.remove('active'));
+        activeLink.classList.add('active');
+        const targetEl = document.querySelector(hash);
+        if (targetEl) {
+          setTimeout(() => targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+        }
+      }
+    }
+  }
+
+  function setupModal() {
+    // Modal open/close is harmonized with app.js
   }
 
   // Self-start

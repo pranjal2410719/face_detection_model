@@ -24,7 +24,7 @@
       <div class="header-right">
         <div class="status-chip" id="centralLinkStatus">
           <span class="chip-dot"></span>
-          <span class="chip-text">CENTRAL RECEIVER: CONNECTED</span>
+          <span class="chip-text">CENTRAL RECEIVER: ONLINE</span>
         </div>
         <a href="/dashboard" class="btn btn-outline btn-sm" target="_blank" title="Open Master Centralized Dashboard">
           📊 Centralized Dashboard ↗
@@ -51,14 +51,14 @@
 
         <!-- Video Screen Container -->
         <div class="viewport-screen-container">
-          <video id="webcamVideo" autoplay playsinline muted></video>
+          <video id="webcamVideo" autoplay playsinline webkit-playsinline muted></video>
           <canvas id="outputCanvas"></canvas>
 
           <!-- Sighting Broadcast Banner -->
           <div class="event-banner" id="eventBanner">
             <div class="banner-icon">⚡</div>
             <div class="banner-content">
-              <span class="banner-title">SIGHTING VERIFIED & DISPATCHED</span>
+              <span class="banner-title">SIGHTING VERIFIED &amp; DISPATCHED</span>
               <span class="banner-desc" id="bannerDesc">Student [2410719] Pranjal yadav • 100% Match</span>
             </div>
             <span class="banner-badge">ACK RECEIVED</span>
@@ -144,7 +144,7 @@
           </div>
         </div>
 
-        <!-- 3. Student Sightings Log (Deduplicated - Show Once Even If Verified Multiple Times) -->
+        <!-- 3. Student Sightings Log (Deduplicated) -->
         <div class="card student-log-card">
           <div class="card-header">
             <h4>Student Sightings (In View)</h4>
@@ -173,7 +173,7 @@
           </div>
         </div>
 
-        <!-- 4. Data Sent Logs (Transmission Terminal) -->
+        <!-- 4. Data Sent Logs (Outbound Telemetry) -->
         <div class="card data-sent-card">
           <div class="card-header">
             <h4>Data Sent Logs (Outbound Telemetry)</h4>
@@ -224,7 +224,7 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="btnCancelEnroll">Cancel</button>
-          <button class="btn btn-primary" id="btnSubmitEnroll">Save & Enroll Template</button>
+          <button class="btn btn-primary" id="btnSubmitEnroll">Save &amp; Enroll Template</button>
         </div>
       </div>
     </div>

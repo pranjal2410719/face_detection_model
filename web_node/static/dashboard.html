@@ -3,205 +3,338 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Centralized Monitoring Dashboard • Face Recognition Network</title>
+  <title>NetCam • Centralized AI Command &amp; Monitoring Dashboard</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="dashboard-body">
-  <div class="dash-shell">
+  <div class="app-dashboard-layout">
     
-    <!-- Top Dashboard Header -->
-    <header class="dash-header">
-      <div class="dash-brand">
-        <div class="dash-pulse-badge">
+    <!-- LEFT SIDEBAR -->
+    <aside class="dash-sidebar" id="dashSidebar">
+      <!-- Sidebar Brand Header -->
+      <div class="sidebar-brand">
+        <div class="brand-logo-icon">
           <span class="live-dot"></span>
-          <span class="dash-brand-title">CENTRAL CAMERA DASHBOARD</span>
+          <span class="brand-icon-glyph">🌐</span>
         </div>
-        <span class="dash-env-tag">REAL-TIME MONITORING &amp; STUDENT LOGS</span>
+        <div class="brand-text-wrap">
+          <h2 class="brand-title">NETCAM</h2>
+          <span class="brand-subtitle">AI COMMAND CENTER</span>
+        </div>
       </div>
 
-      <div class="dash-stats-bar">
-        <div class="dash-stat-box">
-          <span class="stat-num" id="statActiveNodes">0</span>
-          <span class="stat-lbl">Connected Cameras</span>
-        </div>
-        <div class="dash-stat-box">
-          <span class="stat-num" id="statUniqueVerified">0</span>
-          <span class="stat-lbl">Verified Students</span>
-        </div>
-        <div class="dash-stat-box">
-          <span class="stat-num" id="statTotalSightings">0</span>
-          <span class="stat-lbl">Total Sightings</span>
-        </div>
-        <a href="/" class="btn btn-primary btn-sm">
-          📷 Open Camera Station ↗
+      <!-- Live Status Pill -->
+      <div class="sidebar-status-pill">
+        <span class="status-indicator-dot"></span>
+        <span class="status-indicator-label">SYSTEM ONLINE</span>
+        <span class="status-port-tag">:8500</span>
+      </div>
+
+      <!-- Navigation Menu -->
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">MONITORING</div>
+        <a href="#section-overview" class="nav-link active" data-target="section-overview">
+          <span class="nav-icon">🗺️</span>
+          <span class="nav-text">Topology &amp; Live Feeds</span>
+          <span class="nav-badge" id="navNodeBadge">0</span>
         </a>
+        <a href="#section-attendance" class="nav-link" data-target="section-attendance">
+          <span class="nav-icon">📋</span>
+          <span class="nav-text">Attendance &amp; Logs</span>
+          <span class="nav-badge pill-green" id="navVerifiedBadge">0</span>
+        </a>
+
+        <div class="nav-section-label">MANAGEMENT &amp; NODES</div>
+        <a href="#section-enrolled" class="nav-link" data-target="section-enrolled">
+          <span class="nav-icon">👥</span>
+          <span class="nav-text">Enrolled Students</span>
+          <span class="nav-badge" id="navEnrolledBadge">0</span>
+        </a>
+        <a href="/" class="nav-link" target="_blank">
+          <span class="nav-icon">📷</span>
+          <span class="nav-text">Client Camera Station</span>
+          <span class="nav-external-arrow">↗</span>
+        </a>
+      </nav>
+
+      <!-- Sidebar Stats Card -->
+      <div class="sidebar-stats-card">
+        <div class="sidebar-stat-row">
+          <span class="stat-row-lbl">Active Cameras</span>
+          <strong class="stat-row-val text-cyan" id="statActiveNodes">0</strong>
+        </div>
+        <div class="sidebar-stat-row">
+          <span class="stat-row-lbl">Verified Students</span>
+          <strong class="stat-row-val text-green" id="statUniqueVerified">0</strong>
+        </div>
+        <div class="sidebar-stat-row">
+          <span class="stat-row-lbl">Sightings Stored</span>
+          <strong class="stat-row-val text-blue" id="statTotalSightings">0</strong>
+        </div>
       </div>
-    </header>
 
-    <!-- Main Dashboard Content -->
-    <main class="dash-content">
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <button class="btn btn-primary btn-block btn-sm" id="btnSidebarEnroll">
+          ➕ Enroll New Face
+        </button>
+        <div class="sidebar-server-status">
+          <span class="server-dot"></span>
+          <span>Central: ws://127.0.0.1:8765</span>
+        </div>
+      </div>
+    </aside>
 
-      <!-- TOP DYNAMIC TOPOLOGICAL NETWORK MAP -->
-      <section class="dash-section topo-map-section">
-        <div class="section-title-bar">
-          <div class="title-left">
-            <span class="sec-icon">🌐</span>
-            <div>
-              <h3>Dynamic Camera Network &amp; Sighting Topology Map</h3>
-              <div class="sec-sub">Real-time dynamic nodes, confidence-shaded green transitions, and movement direction arrows</div>
-            </div>
-          </div>
-          <div class="map-legend-bar">
-            <div class="legend-item"><span class="legend-swatch swatch-gray"></span> Standby</div>
-            <div class="legend-item"><span class="legend-swatch swatch-green-1"></span> Low (&lt;60%)</div>
-            <div class="legend-item"><span class="legend-swatch swatch-green-2"></span> Med (60-80%)</div>
-            <div class="legend-item"><span class="legend-swatch swatch-green-3"></span> High (&gt;80%)</div>
-            <div class="legend-item"><span class="legend-arrow-icon">➔</span> Transition Edge</div>
+    <!-- MAIN DASHBOARD WORKSPACE -->
+    <div class="dash-main-wrapper">
+      
+      <!-- Top Dashboard Header / Bar -->
+      <header class="dash-topbar">
+        <div class="topbar-left">
+          <button class="btn-sidebar-toggle" id="btnSidebarToggle" aria-label="Toggle Sidebar">
+            ☰
+          </button>
+          <div class="topbar-breadcrumb">
+            <span class="crumb-root">NetCam</span>
+            <span class="crumb-separator">/</span>
+            <span class="crumb-current" id="topbarViewTitle">Real-Time Surveillance &amp; Attendance Matrix</span>
           </div>
         </div>
 
-        <div class="topo-map-card">
-          <div class="topo-map-canvas-wrap">
-            <svg id="topoMapSvg" class="topo-svg" viewBox="0 0 1000 340" preserveAspectRatio="xMidYMid meet">
-              <defs>
-                <!-- Directed Arrow Markers -->
-                <marker id="edgeArrowGreen" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-                  <path d="M 0 1.5 L 10 6 L 0 10.5 z" fill="#00ff88" />
-                </marker>
-                <marker id="edgeArrowCyan" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-                  <path d="M 0 1.5 L 10 6 L 0 10.5 z" fill="#00e5ff" />
-                </marker>
+        <div class="topbar-right">
+          <div class="quick-chip">
+            <span class="quick-chip-label">AI ENGINE</span>
+            <span class="quick-chip-val">YuNet + SFace</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btnRefreshDb">
+            ↻ Refresh
+          </button>
+          <a href="/" class="btn btn-primary btn-sm" target="_blank">
+            📷 Open Camera Station ↗
+          </a>
+        </div>
+      </header>
 
-                <!-- Glow Filter for Ultra-High Confidence -->
-                <filter id="glowPeakGreen" x="-30%" y="-30%" width="160%" height="160%">
-                  <feGaussianBlur stdDeviation="8" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
-                <filter id="glowEdge" x="-30%" y="-30%" width="160%" height="160%">
-                  <feGaussianBlur stdDeviation="4" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
+      <!-- Main Scrollable Content Area -->
+      <main class="dash-content-area">
 
-                <!-- Grid Pattern -->
-                <pattern id="topoGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1"/>
-                  <circle cx="0" cy="0" r="1.5" fill="rgba(0, 229, 255, 0.18)"/>
-                </pattern>
-              </defs>
+        <!-- DUAL OVERVIEW: TOPOLOGY MAP & LIVE CAMERA MATRIX SIDE-BY-SIDE -->
+        <div class="dash-overview-split" id="section-overview">
 
-              <!-- Map Background Grid -->
-              <rect width="100%" height="100%" fill="url(#topoGrid)" />
-
-              <!-- Layer 1: Directed Edges (Cross-Camera Movement) -->
-              <g id="topoEdgesLayer"></g>
-
-              <!-- Layer 2: Dynamic Camera Nodes -->
-              <g id="topoNodesLayer"></g>
-            </svg>
-
-            <!-- Empty Overlay when 0 cameras connected -->
-            <div id="topoEmptyBanner" class="topo-empty-overlay">
-              <div class="topo-empty-inner">
-                <span class="topo-empty-radar">📡</span>
-                <h4>Network Scanner Awaiting Nodes</h4>
-                <p>Launch an Edge Camera Station. Connected camera nodes will dynamically plot on this live topology map.</p>
+          <!-- 1. DYNAMIC TOPOLOGICAL NETWORK MAP -->
+          <section class="dash-section topo-map-section" id="section-topology">
+            <div class="section-title-bar">
+              <div class="title-left">
+                <span class="sec-icon">🌐</span>
+                <div>
+                  <h3>Network Topology Map</h3>
+                  <div class="sec-sub">Real-time dynamic nodes &amp; movement trajectories</div>
+                </div>
+              </div>
+              <div class="map-legend-bar">
+                <div class="legend-item"><span class="legend-swatch swatch-gray"></span> Standby</div>
+                <div class="legend-item"><span class="legend-swatch swatch-green-2"></span> Active</div>
+                <div class="legend-item"><span class="legend-arrow-icon">➔</span> Trajectory</div>
               </div>
             </div>
-          </div>
 
-          <!-- Bottom Status & Movement Ticker -->
-          <div class="topo-footer-bar">
-            <div class="topo-footer-left">
-              <span class="live-dot" id="topoLiveDot"></span>
-              <span id="topoStatusText">Network Ready • 0 Nodes Plotted</span>
+            <div class="topo-map-card">
+              <div class="topo-map-canvas-wrap">
+                <svg id="topoMapSvg" class="topo-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid meet">
+                  <defs>
+                    <!-- Directed Arrow Markers (Clean, Forward-Facing, High-Contrast) -->
+                    <marker id="edgeArrowGreen" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+                      <path d="M 1 2 L 10 6 L 1 10 z" fill="#00ff88" />
+                    </marker>
+                    <marker id="edgeArrowCyan" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+                      <path d="M 1 2 L 10 6 L 1 10 z" fill="#00e5ff" />
+                    </marker>
+
+                    <!-- Glow Filters -->
+                    <filter id="glowPeakGreen" x="-30%" y="-30%" width="160%" height="160%">
+                      <feGaussianBlur stdDeviation="8" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <filter id="glowEdge" x="-30%" y="-30%" width="160%" height="160%">
+                      <feGaussianBlur stdDeviation="4" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+
+                    <!-- Grid Pattern -->
+                    <pattern id="topoGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1"/>
+                      <circle cx="0" cy="0" r="1.5" fill="rgba(0, 229, 255, 0.18)"/>
+                    </pattern>
+                  </defs>
+
+                  <!-- Map Background Grid -->
+                  <rect width="100%" height="100%" fill="url(#topoGrid)" />
+
+                  <!-- Layer 1: Directed Edges (Cross-Camera Movement) -->
+                  <g id="topoEdgesLayer"></g>
+
+                  <!-- Layer 2: Dynamic Camera Nodes -->
+                  <g id="topoNodesLayer"></g>
+                </svg>
+
+                <!-- Empty Overlay when 0 cameras connected -->
+                <div id="topoEmptyBanner" class="topo-empty-overlay">
+                  <div class="topo-empty-inner">
+                    <span class="topo-empty-radar">📡</span>
+                    <h4>Network Scanner Awaiting Nodes</h4>
+                    <p>Connected camera nodes will dynamically plot on this live topology map.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bottom Status & Movement Ticker -->
+              <div class="topo-footer-bar">
+                <div class="topo-footer-left">
+                  <span class="live-dot" id="topoLiveDot"></span>
+                  <span id="topoStatusText">Network Ready • 0 Nodes Plotted</span>
+                </div>
+                <div class="topo-footer-right" id="topoTransitionTicker">
+                  Awaiting detection events...
+                </div>
+              </div>
             </div>
-            <div class="topo-footer-right" id="topoTransitionTicker">
-              Awaiting detection events...
+          </section>
+
+          <!-- 2. LIVE MULTI-CAMERA GRID -->
+          <section class="dash-section camera-matrix-section" id="section-cameras">
+            <div class="section-title-bar">
+              <div class="title-left">
+                <span class="sec-icon">📹</span>
+                <div>
+                  <h3>Live Camera Feeds Matrix</h3>
+                  <div class="sec-sub">Active streams &amp; edge telemetry</div>
+                </div>
+              </div>
+              <span class="pill-badge pill-green" id="dashNodeCount">0 Cameras Online</span>
+            </div>
+            <div class="camera-matrix-grid-scroll">
+              <div class="camera-matrix-grid" id="dashCameraMatrix">
+                <div class="empty-matrix-msg">Awaiting active camera node feeds...</div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- 3. STUDENT VERIFICATION & ATTENDANCE LOGS -->
+        <section class="dash-section" id="section-attendance">
+          <div class="section-title-bar">
+            <div class="title-left">
+              <span class="sec-icon">📋</span>
+              <h3>Student Verification &amp; Activity Logs</h3>
+            </div>
+            <div class="title-actions">
+              <div class="tab-pill-group">
+                <button class="tab-pill active" id="tabUniqueStudents">Verified Students (Grouped)</button>
+                <button class="tab-pill" id="tabAllEvents">All Sighting Events</button>
+              </div>
+              <input type="text" id="filterStudentId" class="form-input form-input-sm" placeholder="Search Student ID or Name...">
             </div>
           </div>
-        </div>
-      </section>
+          <div class="card p-0">
+            <div class="table-scroll-container">
+              <!-- Table 1: Unique Students (Grouped) -->
+              <table class="dash-table" id="tableUniqueStudents">
+                <thead>
+                  <tr>
+                    <th>Student ID</th>
+                    <th>Student Name</th>
+                    <th>Camera Node</th>
+                    <th>Location</th>
+                    <th>First Seen</th>
+                    <th>Last Seen</th>
+                    <th>Sightings</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="dashUniqueTableBody">
+                  <tr class="empty-row">
+                    <td colspan="8">Loading verified students records...</td>
+                  </tr>
+                </tbody>
+              </table>
 
-      <!-- Section 1: Live Multi-Camera Grid -->
-      <section class="dash-section">
-        <div class="section-title-bar">
-          <div class="title-left">
-            <span class="sec-icon">📹</span>
-            <h3>Live Camera Feeds</h3>
-          </div>
-          <span class="pill-badge pill-green" id="dashNodeCount">0 Cameras Online</span>
-        </div>
-        <div class="camera-matrix-grid" id="dashCameraMatrix">
-          <div class="empty-matrix-msg">Awaiting active camera node feeds...</div>
-        </div>
-      </section>
-
-      <!-- Section 2: Student Verification & Attendance Records -->
-      <section class="dash-section">
-        <div class="section-title-bar">
-          <div class="title-left">
-            <span class="sec-icon">📋</span>
-            <h3>Student Verification &amp; Activity Logs</h3>
-          </div>
-          <div class="title-actions">
-            <div class="tab-pill-group">
-              <button class="tab-pill active" id="tabUniqueStudents">Verified Students (Grouped)</button>
-              <button class="tab-pill" id="tabAllEvents">All Sighting Events</button>
+              <!-- Table 2: All Events -->
+              <table class="dash-table" id="tableAllEvents" style="display: none;">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Student ID</th>
+                    <th>Student Name</th>
+                    <th>Camera Node</th>
+                    <th>Location</th>
+                    <th>Confidence</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="dashAllEventsTableBody">
+                  <tr class="empty-row">
+                    <td colspan="7">Loading real-time events...</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <input type="text" id="filterStudentId" class="form-input form-input-sm" placeholder="Search Student ID or Name...">
-            <button class="btn btn-secondary btn-sm" id="btnRefreshDb">↻ Refresh</button>
           </div>
-        </div>
-        <div class="card p-0">
-          <div class="table-scroll-container">
-            <!-- Table 1: Unique Students (Grouped) -->
-            <table class="dash-table" id="tableUniqueStudents">
-              <thead>
-                <tr>
-                  <th>Student ID</th>
-                  <th>Student Name</th>
-                  <th>Camera Node</th>
-                  <th>Location</th>
-                  <th>First Seen</th>
-                  <th>Last Seen</th>
-                  <th>Sightings</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="dashUniqueTableBody">
-                <tr class="empty-row">
-                  <td colspan="8">Loading verified students records...</td>
-                </tr>
-              </tbody>
-            </table>
+        </section>
 
-            <!-- Table 2: All Events -->
-            <table class="dash-table" id="tableAllEvents" style="display: none;">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Student ID</th>
-                  <th>Student Name</th>
-                  <th>Camera Node</th>
-                  <th>Location</th>
-                  <th>Confidence</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="dashAllEventsTableBody">
-                <tr class="empty-row">
-                  <td colspan="7">Loading real-time events...</td>
-                </tr>
-              </tbody>
-            </table>
+        <!-- 4. ENROLLED STUDENTS DIRECTORY -->
+        <section class="dash-section" id="section-enrolled">
+          <div class="section-title-bar">
+            <div class="title-left">
+              <span class="sec-icon">👥</span>
+              <h3>Enrolled Biometric Directory</h3>
+            </div>
+            <span class="pill-badge pill-cyan" id="dashEnrolledBadge">0 Students Enrolled</span>
           </div>
-        </div>
-      </section>
+          <div class="enrolled-students-grid" id="dashEnrolledGrid">
+            <div class="empty-matrix-msg">Loading registered biometric profiles...</div>
+          </div>
+        </section>
 
-    </main>
+      </main>
+    </div>
+  </div>
+
+  <!-- QUICK ENROLL MODAL -->
+  <div class="modal-backdrop" id="enrollModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Enroll New Student Face</h3>
+        <button class="modal-close" id="btnCloseModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-sub">Upload an image or register a face into the biometric database.</p>
+        <div class="form-group">
+          <label>Student ID *</label>
+          <input type="text" id="modalStudentId" class="form-input" placeholder="e.g. 2410719" required>
+        </div>
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="modalStudentName" class="form-input" placeholder="e.g. Pranjal yadav" required>
+        </div>
+        <div class="form-group">
+          <label>Department</label>
+          <input type="text" id="modalDepartment" class="form-input" placeholder="Engineering">
+        </div>
+        <div class="form-group">
+          <label>Face Image File *</label>
+          <input type="file" id="modalImageFile" class="form-input" accept="image/*">
+        </div>
+        <div id="modalEnrollMsg" class="modal-error" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelEnroll">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitEnroll">Submit &amp; Enroll</button>
+      </div>
+    </div>
   </div>
 
   <script src="dashboard.js"></script>

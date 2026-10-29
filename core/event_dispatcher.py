@@ -10,6 +10,7 @@ import sqlite3
 import datetime
 import threading
 import logging
+from contextlib import closing
 from pathlib import Path
 from typing import Dict, Optional, Callable
 import asyncio
@@ -32,13 +33,16 @@ class CameraEventDispatcher:
                  auth_token: str = config.CAMERA_AUTH_TOKEN,
                  cooldown_seconds: float = 5.0,
                  local_queue_db: Optional[Path] = None,
-                 on_event_sent: Optional[Callable] = None):
+                 on_event_sent: Optional[Callable] = None,
+                 on_ack_received: Optional[Callable] = None):
         self.endpoint_url = endpoint_url
         self.camera_id = camera_id
         self.camera_location = camera_location
         self.auth_token = auth_token
         self.cooldown_seconds = cooldown_seconds
         self.on_event_sent = on_event_sent
+        self.on_ack_received = on_ack_received
+        self.is_connected = False
 
         # Local durable queue database
         if local_queue_db is None:
@@ -58,7 +62,9 @@ class CameraEventDispatcher:
         self.last_dispatched_time = 0.0
 
     def _init_local_db(self):
-        with sqlite3.connect(self.local_queue_db) as conn:
+        with closing(sqlite3.connect(self.local_queue_db, timeout=5.0)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS pending_events (
                     event_id TEXT PRIMARY KEY,
@@ -69,6 +75,11 @@ class CameraEventDispatcher:
                 )
             """)
             conn.commit()
+
+    def update_identity(self, camera_id: str, camera_location: str):
+        """Dynamically updates camera identity."""
+        self.camera_id = camera_id
+        self.camera_location = camera_location
 
     def start(self):
         """Starts background transmission worker."""
@@ -124,7 +135,7 @@ class CameraEventDispatcher:
 
         # Store into local SQLite queue
         try:
-            with sqlite3.connect(self.local_queue_db) as conn:
+            with closing(sqlite3.connect(self.local_queue_db, timeout=5.0)) as conn:
                 conn.execute(
                     "INSERT INTO pending_events (event_id, student_id, payload, created_at) VALUES (?, ?, ?, ?)",
                     (event_id, student_id, json.dumps(payload), now)
@@ -190,9 +201,11 @@ class CameraEventDispatcher:
                         auth_resp = await asyncio.wait_for(ws.recv(), timeout=5.0)
                         auth_data = json.loads(auth_resp)
                         if auth_data.get("status") != "AUTH_OK":
+                            self.is_connected = False
                             logger.error(f"Authentication failed: {auth_data.get('message')}. Waiting 10s...")
                             await asyncio.sleep(10)
                             continue
+                        self.is_connected = True
                         logger.info("Authenticated with Central Server successfully.")
 
                     last_heartbeat = time.time()
@@ -275,6 +288,11 @@ class CameraEventDispatcher:
                                     self._delete_event(event_id)
                                     self.total_dispatched += 1
                                     logger.debug(f"Event {event_id[:8]} ACKed.")
+                                    if self.on_ack_received:
+                                        try:
+                                            self.on_ack_received(event_id, payload_obj.get("student_id"), ack)
+                                        except Exception as ex:
+                                            logger.warning(f"Error in on_ack_received callback: {ex}")
                                 else:
                                     logger.warning(f"Unexpected response for {event_id}: {ack}")
                             except asyncio.TimeoutError:
@@ -284,18 +302,19 @@ class CameraEventDispatcher:
                         await asyncio.sleep(0.1)
 
             except Exception as e:
+                self.is_connected = False
                 if self.running:
                     logger.warning(f"Connection issue ({e}). Retrying in 4 seconds...")
                     await asyncio.sleep(4)
 
     def _fetch_pending_events(self, batch_size=10):
-        with sqlite3.connect(self.local_queue_db) as conn:
+        with closing(sqlite3.connect(self.local_queue_db, timeout=5.0)) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT event_id, payload FROM pending_events ORDER BY created_at ASC LIMIT ?", (batch_size,))
             return cursor.fetchall()
 
     def _delete_event(self, event_id: str):
-        with sqlite3.connect(self.local_queue_db) as conn:
+        with closing(sqlite3.connect(self.local_queue_db, timeout=5.0)) as conn:
             conn.execute("DELETE FROM pending_events WHERE event_id = ?", (event_id,))
             conn.commit()
 

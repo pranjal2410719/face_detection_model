@@ -19,6 +19,7 @@ import sqlite3
 import datetime
 import logging
 import asyncio
+from contextlib import closing
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set
 
@@ -82,6 +83,96 @@ dashboard_sockets: Set[WebSocket] = set()
 # In-memory recent sightings buffer
 recent_sightings: List[Dict[str, Any]] = []
 
+main_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def handle_dispatcher_ack(event_id: str, student_id: str, ack_payload: dict):
+    """Callback invoked from dispatcher background thread upon confirmed ACK from Central Server."""
+    logger.info(f"Central Server ACK confirmed for event {event_id[:8]} (Student {student_id})")
+    if main_loop and main_loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            broadcast_ack(event_id, student_id, ack_payload),
+            main_loop
+        )
+
+
+async def broadcast_ack(event_id: str, student_id: str, ack_payload: dict):
+    payload = {
+        "event_id": event_id,
+        "student_id": student_id,
+        "server_received_at": ack_payload.get("server_received_at"),
+        "status": "ACK_RECEIVED"
+    }
+    await broadcast_to_dashboards("EVENT_ACK", payload)
+    for ws in list(camera_sockets.values()):
+        try:
+            await ws.send_json({"type": "EVENT_ACK", **payload})
+        except Exception:
+            pass
+
+
+def load_trajectories_from_db():
+    """Reconstructs cross-camera student trajectories from persistent Central Storage."""
+    db_path = config.CENTRAL_STORAGE_DIR / "events.db"
+    if not db_path.exists():
+        return
+    try:
+        with closing(sqlite3.connect(db_path, timeout=5.0)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT student_id, student_name, camera_id, camera_location, observed_at, confidence
+                FROM sightings
+                WHERE status = 'VERIFIED' AND student_id IS NOT NULL AND student_id != '' AND student_id != 'UNKNOWN'
+                ORDER BY observed_at ASC
+            """)
+            rows = cursor.fetchall()
+            for r in rows:
+                stu_id = r["student_id"]
+                cam_id = r["camera_id"]
+                loc = r["camera_location"]
+                obs = r["observed_at"]
+                conf = round(float(r["confidence"]) * 100, 1)
+
+                t_str = obs.split("T")[1].split(".")[0] if "T" in obs else obs
+                if stu_id not in student_trajectories:
+                    student_trajectories[stu_id] = {
+                        "student_id": stu_id,
+                        "student_name": r["student_name"] or stu_id,
+                        "current_camera": cam_id,
+                        "current_location": loc,
+                        "first_seen": t_str,
+                        "last_seen": t_str,
+                        "last_seen_epoch": time.time(),
+                        "confidence": conf,
+                        "trajectory": [{
+                            "from_camera": "START",
+                            "to_camera": cam_id,
+                            "location": loc,
+                            "transit_sec": 0.0,
+                            "time": t_str
+                        }]
+                    }
+                else:
+                    traj = student_trajectories[stu_id]
+                    if traj["current_camera"] != cam_id:
+                        traj["trajectory"].append({
+                            "from_camera": traj["current_camera"],
+                            "to_camera": cam_id,
+                            "location": loc,
+                            "transit_sec": 0.0,
+                            "time": t_str
+                        })
+                        traj["current_camera"] = cam_id
+                        traj["current_location"] = loc
+                    traj["last_seen"] = t_str
+                    traj["confidence"] = conf
+        logger.info(f"Loaded {len(student_trajectories)} historical student trajectories from Central Storage.")
+    except Exception as e:
+        logger.warning(f"Could not load initial trajectories from DB: {e}")
+
 
 def get_or_create_dispatcher(camera_id: str, location: str, endpoint: str = config.EVENT_ENDPOINT_URL, token: str = config.CAMERA_AUTH_TOKEN) -> CameraEventDispatcher:
     if camera_id not in dispatchers:
@@ -90,21 +181,23 @@ def get_or_create_dispatcher(camera_id: str, location: str, endpoint: str = conf
             camera_id=camera_id,
             camera_location=location,
             auth_token=token,
-            cooldown_seconds=config.EVENT_COOLDOWN_SECONDS
+            cooldown_seconds=config.EVENT_COOLDOWN_SECONDS,
+            on_ack_received=handle_dispatcher_ack
         )
         disp.start()
         dispatchers[camera_id] = disp
     else:
         disp = dispatchers[camera_id]
-        disp.camera_location = location
+        disp.update_identity(camera_id, location)
         disp.endpoint_url = endpoint
     return disp
 
 
 @app.on_event("startup")
 async def startup_event():
-    global detector, recognizer, student_db, visualizer
+    global detector, recognizer, student_db, visualizer, main_loop
     logger.info("Initializing Face Engine & Student Database for Camera Network...")
+    main_loop = asyncio.get_running_loop()
 
     detector = FaceDetector(
         model_path=config.DETECTOR_MODEL_PATH,
@@ -124,6 +217,7 @@ async def startup_event():
     )
     visualizer = Visualizer(camera_id="EDGE-NODE")
     logger.info(f"Engine ready. Enrolled database has {student_db.get_enrolled_count()} students.")
+    load_trajectories_from_db()
 
 
 @app.on_event("shutdown")
@@ -172,11 +266,13 @@ async def get_node_info():
                 "batch": meta.get("batch", "2026")
             })
 
+    central_online = any(d.is_connected for d in dispatchers.values()) if dispatchers else False
     return {
         "node_type": "Edge Camera Node",
         "default_camera_id": config.CAMERA_ID,
         "default_location": config.CAMERA_LOCATION,
         "central_endpoint": config.EVENT_ENDPOINT_URL,
+        "central_receiver_online": central_online,
         "detector_model": "OpenCV YuNet (2023mar)",
         "recognizer_model": "OpenCV SFace (2021dec)",
         "enrolled_count": len(enrolled),
@@ -209,19 +305,22 @@ async def get_trajectories():
 
 
 def get_db_stats():
-    """Returns real SQLite stats from events.db."""
+    """Returns real SQLite stats from events.db with WAL mode support."""
     db_path = config.CENTRAL_STORAGE_DIR / "events.db"
     if not db_path.exists():
         return {"total_sightings": 0, "unique_verified": 0}
     try:
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path, timeout=5.0)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
             c = conn.cursor()
             c.execute("SELECT count(*) FROM sightings")
             total = c.fetchone()[0]
             c.execute("SELECT count(DISTINCT student_id) FROM sightings WHERE status = 'VERIFIED'")
             unique_v = c.fetchone()[0]
             return {"total_sightings": total, "unique_verified": unique_v}
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Error reading stats from events.db: {e}")
         return {"total_sightings": 0, "unique_verified": 0}
 
 
@@ -231,10 +330,12 @@ async def get_dashboard_stats():
     now = time.time()
     online_cameras = sum(1 for info in active_nodes.values() if (now - info.get("last_heartbeat", 0)) < 12.0)
     db_stats = get_db_stats()
+    central_online = any(d.is_connected for d in dispatchers.values()) if dispatchers else False
     return {
         "active_cameras": online_cameras,
         "unique_verified": db_stats["unique_verified"],
-        "total_sightings": db_stats["total_sightings"]
+        "total_sightings": db_stats["total_sightings"],
+        "central_receiver_online": central_online
     }
 
 
@@ -250,7 +351,9 @@ async def get_central_events(limit: int = 50, student_id: Optional[str] = None, 
         return []
 
     try:
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path, timeout=5.0)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=5000;")
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             if deduplicate:
@@ -404,6 +507,7 @@ async def camera_feed_endpoint(websocket: WebSocket):
 
     camera_id = config.CAMERA_ID
     camera_location = config.CAMERA_LOCATION
+    camera_sockets[camera_id] = websocket
     fps_time = time.perf_counter()
     fps_counter = 0
     frame_broadcast_counter = 0
@@ -426,6 +530,7 @@ async def camera_feed_endpoint(websocket: WebSocket):
             if m_type == "CONFIG":
                 camera_id = msg.get("camera_id", camera_id)
                 camera_location = msg.get("camera_location", camera_location)
+                camera_sockets[camera_id] = websocket
                 get_or_create_dispatcher(camera_id, camera_location)
 
                 active_nodes[camera_id] = {
@@ -539,7 +644,7 @@ async def camera_feed_endpoint(websocket: WebSocket):
                             "target": "Central Server (ws://127.0.0.1:8765)",
                             "latency_ms": round(face_latency, 1),
                             "confidence": round(float(sim_score) * 100, 1),
-                            "status": "ACK_RECEIVED" if disp_res else "DISPATCHED"
+                            "status": "DISPATCHED" if dispatcher.is_connected else "QUEUED_LOCAL"
                         }
                         data_sent_receipts.append(receipt)
 
@@ -562,46 +667,47 @@ async def camera_feed_endpoint(websocket: WebSocket):
                             if len(recent_sightings) > 50:
                                 recent_sightings.pop(0)
 
-                        # Update cross-camera trajectory
-                        if stu_id in student_trajectories:
-                            traj = student_trajectories[stu_id]
-                            if traj["current_camera"] != client_cam_id:
-                                transit_time = time.time() - traj["last_seen_epoch"]
-                                traj["trajectory"].append({
-                                    "from_camera": traj["current_camera"],
-                                    "to_camera": client_cam_id,
-                                    "location": client_location,
-                                    "transit_sec": round(transit_time, 1),
-                                    "time": now_str
-                                })
-                                traj["current_camera"] = client_cam_id
-                                traj["current_location"] = client_location
-                            traj["last_seen_epoch"] = time.time()
-                            traj["last_seen"] = now_str
-                            traj["confidence"] = round(float(sim_score) * 100, 1)
-                        else:
-                            student_trajectories[stu_id] = {
-                                "student_id": stu_id,
-                                "student_name": student_name,
-                                "current_camera": client_cam_id,
-                                "current_location": client_location,
-                                "first_seen": now_str,
-                                "last_seen": now_str,
-                                "last_seen_epoch": time.time(),
-                                "confidence": round(float(sim_score) * 100, 1),
-                                "trajectory": [{
-                                    "from_camera": "START",
-                                    "to_camera": client_cam_id,
-                                    "location": client_location,
-                                    "transit_sec": 0.0,
-                                    "time": now_str
-                                }]
-                            }
+                        # Update cross-camera trajectory STRICTLY for VERIFIED students
+                        if status == "VERIFIED" and stu_id and stu_id != "UNKNOWN":
+                            if stu_id in student_trajectories:
+                                traj = student_trajectories[stu_id]
+                                if traj["current_camera"] != client_cam_id:
+                                    transit_time = time.time() - traj["last_seen_epoch"]
+                                    traj["trajectory"].append({
+                                        "from_camera": traj["current_camera"],
+                                        "to_camera": client_cam_id,
+                                        "location": client_location,
+                                        "transit_sec": round(transit_time, 1),
+                                        "time": now_str
+                                    })
+                                    traj["current_camera"] = client_cam_id
+                                    traj["current_location"] = client_location
+                                traj["last_seen_epoch"] = time.time()
+                                traj["last_seen"] = now_str
+                                traj["confidence"] = round(float(sim_score) * 100, 1)
+                            else:
+                                student_trajectories[stu_id] = {
+                                    "student_id": stu_id,
+                                    "student_name": student_name,
+                                    "current_camera": client_cam_id,
+                                    "current_location": client_location,
+                                    "first_seen": now_str,
+                                    "last_seen": now_str,
+                                    "last_seen_epoch": time.time(),
+                                    "confidence": round(float(sim_score) * 100, 1),
+                                    "trajectory": [{
+                                        "from_camera": "START",
+                                        "to_camera": client_cam_id,
+                                        "location": client_location,
+                                        "transit_sec": 0.0,
+                                        "time": now_str
+                                    }]
+                                }
 
                         # Broadcast to dashboard
                         await broadcast_to_dashboards("NEW_SIGHTING", {
                             "sighting": sighting_rec,
-                            "trajectory": student_trajectories.get(stu_id)
+                            "trajectory": student_trajectories.get(stu_id) if status == "VERIFIED" and stu_id != "UNKNOWN" else None
                         })
 
                 # Measure throughput
@@ -631,7 +737,8 @@ async def camera_feed_endpoint(websocket: WebSocket):
                 _, thumb_buf = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 65])
                 thumb_b64 = "data:image/jpeg;base64," + base64.b64encode(thumb_buf).decode("ascii")
 
-                recognized_students = [
+                # Strictly filter verified students for dashboard map & telemetry
+                verified_students = [
                     {
                         "student_id": r["student_id"],
                         "student_name": r["student_name"],
@@ -639,7 +746,7 @@ async def camera_feed_endpoint(websocket: WebSocket):
                         "status": r["status"]
                     }
                     for r in recognitions
-                    if r.get("student_id") and r.get("status") in ("VERIFIED", "UNCERTAIN")
+                    if r.get("student_id") and r.get("student_id") != "UNKNOWN" and r.get("status") == "VERIFIED"
                 ]
 
                 # Update active node registry
@@ -654,11 +761,11 @@ async def camera_feed_endpoint(websocket: WebSocket):
                     "latest_thumbnail": thumb_b64,
                     "total_sightings": dispatcher.total_dispatched,
                     "active_faces": len(faces),
-                    "active_students": recognized_students,
-                    "latest_student": recognitions[0]["student_id"] if recognitions else None,
-                    "latest_name": recognitions[0]["student_name"] if recognitions else None,
-                    "latest_confidence": recognitions[0]["confidence"] if recognitions else 0.0,
-                    "latest_status": recognitions[0]["status"] if recognitions else None
+                    "active_students": verified_students,
+                    "latest_student": verified_students[0]["student_id"] if verified_students else None,
+                    "latest_name": verified_students[0]["student_name"] if verified_students else None,
+                    "latest_confidence": verified_students[0]["confidence"] if verified_students else 0.0,
+                    "latest_status": "VERIFIED" if verified_students else None
                 }
 
                 # Broadcast live camera stream directly to the Centralized Dashboard
@@ -679,6 +786,7 @@ async def camera_feed_endpoint(websocket: WebSocket):
                     "recognitions": recognitions,
                     "enrolled_count": student_db.get_enrolled_count(),
                     "data_sent_receipts": data_sent_receipts,
+                    "central_receiver_online": dispatcher.is_connected,
                     "connected_nodes": [
                         {"camera_id": k, "location": v.get("location"), "online": (time.time() - v.get("last_heartbeat", 0)) < 12.0}
                         for k, v in active_nodes.items()
@@ -690,6 +798,7 @@ async def camera_feed_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Error in camera feed loop: {e}")
     finally:
+        camera_sockets.pop(camera_id, None)
         if camera_id in active_nodes:
             active_nodes[camera_id]["online"] = False
         await broadcast_to_dashboards("NODE_OFFLINE", {"camera_id": camera_id})

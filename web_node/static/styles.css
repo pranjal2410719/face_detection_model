@@ -1796,42 +1796,13 @@ label {
 
 .topo-edge-path {
   fill: none !important;
-  stroke: #00ff88;
+  stroke: #00ff88 !important;
   stroke-width: 3.5px !important;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 8 6;
   animation: topoEdgeFlow 1.2s linear infinite;
   filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.75));
-}
-
-.topo-edge-overlap {
-  fill: none !important;
-  stroke: #00e5ff !important;
-  stroke-width: 2.5px !important;
-  stroke-linecap: round;
-  stroke-dasharray: 6 5;
-  animation: topoOverlapFlow 2s linear infinite;
-  filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.85));
-}
-
-@keyframes topoOverlapFlow {
-  to {
-    stroke-dashoffset: -22;
-  }
-}
-
-.ticker-overlap-pill {
-  background: rgba(0, 229, 255, 0.2);
-  color: #00e5ff;
-  border: 1px solid rgba(0, 229, 255, 0.4);
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  margin-right: 6px;
-  letter-spacing: 0.5px;
 }
 
 @keyframes topoEdgeFlow {

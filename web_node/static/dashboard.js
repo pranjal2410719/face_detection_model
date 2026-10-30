@@ -242,7 +242,6 @@
     const stuName = sighting.student_name || 'Student';
     const status = sighting.status;
     const conf = (sighting.confidence || 75) / 100.0;
-    const now = Date.now();
 
     // Strict Rule: Trajectories & dynamic map detections are ONLY for VERIFIED users
     if (status !== 'VERIFIED' || !stuId || stuId === 'UNKNOWN') {
@@ -259,31 +258,12 @@
       });
     }
 
-    // Check cross-camera presence: Sequential Transition vs Concurrent Dual Presence
-    const prevRecord = studentLastCamera[stuId];
-    if (prevRecord) {
-      const prevCam = typeof prevRecord === 'string' ? prevRecord : prevRecord.cameraId;
-      const prevTime = typeof prevRecord === 'object' && prevRecord.timestamp ? prevRecord.timestamp : 0;
-
-      if (prevCam && prevCam !== camId && activeNodesMap[prevCam]) {
-        const timeDelta = now - prevTime;
-        // Check if student is still actively illuminated in previous camera (under 6.5s decay)
-        const isStillActiveInPrevCam = Boolean(
-          nodeDetectionState[prevCam] &&
-          nodeDetectionState[prevCam][stuId] &&
-          (now - (nodeDetectionState[prevCam][stuId].lastSeenTime || 0) < 6500)
-        );
-
-        // If sighting occurs within 3.5s or student is actively seen in both cameras -> Overlap Zone
-        const isOverlap = (prevTime > 0 && timeDelta <= 3500) || isStillActiveInPrevCam;
-        addTransitionEdge(prevCam, camId, stuId, stuName, isOverlap ? 'OVERLAP' : 'TRANSITION');
-      }
+    // Check cross-camera transition for verified user
+    const prevCam = studentLastCamera[stuId];
+    if (prevCam && prevCam !== camId && activeNodesMap[prevCam]) {
+      addTransitionEdge(prevCam, camId, stuId, stuName);
     }
-
-    studentLastCamera[stuId] = {
-      cameraId: camId,
-      timestamp: now
-    };
+    studentLastCamera[stuId] = camId;
   }
 
   // ---------------------------------------------------------------------------
@@ -402,43 +382,29 @@
     }
 
     // Render unified expanding capsule box
-    const isMultiPerson = students.length > 1;
     const visibleStudents = students.slice(0, 4);
     const overflowCount = students.length - visibleStudents.length;
 
     const rowHeight = 22;
-    const headerHeight = isMultiPerson ? 20 : 0;
     const padY = 8;
-    const totalH = padY * 2 + headerHeight + (visibleStudents.length * rowHeight) + (overflowCount > 0 ? 18 : 0);
+    const totalH = padY * 2 + (visibleStudents.length * rowHeight) + (overflowCount > 0 ? 18 : 0);
 
-    // Calculate dynamic capsule width based on longest student name or header
-    const maxLen = Math.max(isMultiPerson ? 20 : 12, ...visibleStudents.map(s => (s.studentName || s.studentId).length));
-    const capsuleW = Math.min(270, Math.max(180, maxLen * 8 + 60));
+    // Calculate dynamic capsule width based on longest student name
+    const maxLen = Math.max(...visibleStudents.map(s => (s.studentName || s.studentId).length));
+    const capsuleW = Math.min(250, Math.max(160, maxLen * 8 + 60));
     const capsuleX = -capsuleW / 2;
     const capsuleY = -38 - totalH; // sits neatly above the camera circle
 
-    let capsuleHeaderHtml = '';
-    if (isMultiPerson) {
-      const headY = capsuleY + padY + 11;
-      const headDivY = capsuleY + padY + 17;
-      capsuleHeaderHtml = `
-        <text x="0" y="${headY}" text-anchor="middle" font-size="9.5" font-family="'JetBrains Mono', monospace" font-weight="700" fill="#00e5ff" letter-spacing="0.5">
-          👥 ${students.length} VERIFIED PRESENT
-        </text>
-        <line x1="${capsuleX + 12}" y1="${headDivY}" x2="${capsuleX + capsuleW - 12}" y2="${headDivY}" stroke="rgba(0, 229, 255, 0.25)" stroke-width="1" />
-      `;
-    }
-
     let capsuleRowsHtml = '';
     visibleStudents.forEach((st, idx) => {
-      const rowY = capsuleY + padY + headerHeight + (idx * rowHeight) + 15;
+      const rowY = capsuleY + padY + (idx * rowHeight) + 15;
       const stShade = getConfidenceShade(st.confidence);
       const confPct = Math.round(st.confidence * 100);
 
       // Divider line between student rows
       let dividerHtml = '';
       if (idx > 0) {
-        const divY = capsuleY + padY + headerHeight + (idx * rowHeight);
+        const divY = capsuleY + padY + (idx * rowHeight);
         dividerHtml = `<line x1="${capsuleX + 12}" y1="${divY}" x2="${capsuleX + capsuleW - 12}" y2="${divY}" stroke="rgba(255, 255, 255, 0.09)" stroke-width="1" />`;
       }
 
@@ -453,8 +419,8 @@
     });
 
     if (overflowCount > 0) {
-      const overY = capsuleY + padY + headerHeight + (visibleStudents.length * rowHeight) + 13;
-      const divY = capsuleY + padY + headerHeight + (visibleStudents.length * rowHeight);
+      const overY = capsuleY + padY + (visibleStudents.length * rowHeight) + 13;
+      const divY = capsuleY + padY + (visibleStudents.length * rowHeight);
       capsuleRowsHtml += `
         <line x1="${capsuleX + 12}" y1="${divY}" x2="${capsuleX + capsuleW - 12}" y2="${divY}" stroke="rgba(0, 229, 255, 0.2)" stroke-width="1" />
         <text x="0" y="${overY}" text-anchor="middle" font-size="9" font-family="'Inter', sans-serif" font-weight="700" fill="#00e5ff">
@@ -462,8 +428,6 @@
         </text>
       `;
     }
-
-    const capsuleBorderColor = isMultiPerson ? '#00e5ff' : shade.stroke;
 
     const capsuleHtml = `
       <g class="node-capsule-wrap">
@@ -473,18 +437,15 @@
               width="${capsuleW}" height="${totalH}" 
               rx="13" ry="13"
               fill="rgba(15, 23, 42, 0.95)" 
-              stroke="${capsuleBorderColor}" 
-              stroke-width="${isMultiPerson ? 2 : 1.5}" 
+              stroke="${shade.stroke}" 
+              stroke-width="1.5" 
               filter="drop-shadow(0 4px 14px rgba(0,0,0,0.7))" />
 
         <!-- Anchor Pointer Stem pointing to camera node -->
         <polygon points="-6,${-38} 0,${-33} 6,${-38}" 
                  fill="rgba(15, 23, 42, 0.95)" 
-                 stroke="${capsuleBorderColor}" 
-                 stroke-width="${isMultiPerson ? 2 : 1.5}" />
-
-        <!-- Multi-Student Header if multiple present -->
-        ${capsuleHeaderHtml}
+                 stroke="${shade.stroke}" 
+                 stroke-width="1.5" />
 
         <!-- Student Rows Appended Inside Capsule -->
         ${capsuleRowsHtml}
@@ -497,15 +458,9 @@
 
     // Update bottom ticker with all student names
     const namesList = students.map(s => `<strong>${s.studentName}</strong> [${Math.round(s.confidence * 100)}%]`).join(', ');
-    if (isMultiPerson) {
-      topoTransitionTicker.innerHTML = `
-        <span class="ticker-highlight" style="color:#00e5ff;">👥 Group at ${camId} (${students.length} students):</span> ${namesList}
-      `;
-    } else {
-      topoTransitionTicker.innerHTML = `
-        <span class="ticker-highlight">● Active at ${camId}:</span> ${namesList}
-      `;
-    }
+    topoTransitionTicker.innerHTML = `
+      <span class="ticker-highlight">● Active at ${camId}:</span> ${namesList}
+    `;
   }
 
   function decayNodeDetections() {
@@ -536,39 +491,15 @@
     }
   }
 
-  const STUDENT_PALETTE = [
-    { stroke: '#00ff88', bg: '#061f14', marker: 'url(#edgeArrowGreen)', tagText: '#00ff88' },
-    { stroke: '#00e5ff', bg: '#031b26', marker: 'url(#edgeArrowCyan)', tagText: '#00e5ff' },
-    { stroke: '#ffb300', bg: '#2b1a03', marker: 'url(#edgeArrowAmber)', tagText: '#ffb300' },
-    { stroke: '#d946ef', bg: '#260a2b', marker: 'url(#edgeArrowPurple)', tagText: '#d946ef' }
-  ];
-
-  function getStudentColor(studentId) {
-    if (!studentId) return STUDENT_PALETTE[0];
-    let hash = 0;
-    const str = String(studentId);
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) - hash + str.charCodeAt(i);
-      hash |= 0;
-    }
-    const idx = Math.abs(hash) % STUDENT_PALETTE.length;
-    return STUDENT_PALETTE[idx];
-  }
-
-  function addTransitionEdge(fromCam, toCam, studentId, studentName, edgeType = 'TRANSITION') {
+  function addTransitionEdge(fromCam, toCam, studentId, studentName) {
     if (!fromCam || !toCam || fromCam === toCam) return;
     if (!studentId || studentId === 'UNKNOWN') return;
 
-    // Deduplicate: If an edge already exists between these two nodes (in either direction if OVERLAP)
-    const existing = activeTransitions.find(t => 
-      (t.from === fromCam && t.to === toCam && t.studentId === studentId) ||
-      (edgeType === 'OVERLAP' && t.from === toCam && t.to === fromCam && t.studentId === studentId)
-    );
-
+    // Deduplicate: If an edge already exists between these two nodes, bump timestamp
+    const existing = activeTransitions.find(t => t.from === fromCam && t.to === toCam);
     if (existing) {
       existing.studentId = studentId;
       existing.studentName = studentName;
-      existing.type = edgeType;
       existing.timestamp = Date.now();
     } else {
       activeTransitions.push({
@@ -576,25 +507,17 @@
         to: toCam,
         studentId: studentId,
         studentName: studentName,
-        type: edgeType,
         timestamp: Date.now()
       });
     }
 
     renderEdges();
 
-    // Update status ticker based on edgeType
-    if (edgeType === 'OVERLAP') {
-      topoTransitionTicker.innerHTML = `
-        <span class="ticker-overlap-pill">⚡ DUAL PRESENCE:</span>
-        <strong>${studentName}</strong> sighted concurrently on <code class="code-id">${fromCam}</code> &amp; <code class="code-id">${toCam}</code> (Overlap Zone)
-      `;
-    } else {
-      topoTransitionTicker.innerHTML = `
-        <span class="ticker-transition-pill">➔ TRAJECTORY:</span>
-        <strong>${studentName}</strong> transit: <code class="code-id">${fromCam}</code> ➔ <code class="code-id">${toCam}</code>
-      `;
-    }
+    // Update status ticker
+    topoTransitionTicker.innerHTML = `
+      <span class="ticker-transition-pill">➔ TRAJECTORY:</span>
+      <strong>${studentName}</strong> transit: <code class="code-id">${fromCam}</code> ➔ <code class="code-id">${toCam}</code>
+    `;
   }
 
   function calculateNodePositions(nodes) {
@@ -718,9 +641,6 @@
 
       if (dist < 30) return;
 
-      const isOverlap = trans.type === 'OVERLAP';
-      const studentColor = getStudentColor(trans.studentId);
-
       // Determine arch curvature based on horizontal direction
       // Left-to-right arches upward (negative Y offset)
       // Right-to-left arches downward (positive Y offset)
@@ -729,64 +649,44 @@
       const archHeight = Math.min(65, Math.max(35, dist * 0.18));
       
       const midX = (p1.x + p2.x) / 2;
-      const midY = (p1.y + p2.y) / 2 + (isOverlap ? 0 : archSign * archHeight);
+      const midY = (p1.y + p2.y) / 2 + archSign * archHeight;
 
       // Trim start point (p1 -> mid)
       const dx1 = midX - p1.x;
       const dy1 = midY - p1.y;
-      const d1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+      const d1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
       const rStart = 38;
       const x1 = p1.x + (dx1 * rStart) / d1;
       const y1 = p1.y + (dy1 * rStart) / d1;
 
       // Trim end point (mid -> p2)
+      // Note: Trimming along (mid -> p2) ensures the arrow enters p2 pointing directly into the node!
       const dx2 = p2.x - midX;
       const dy2 = p2.y - midY;
-      const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
-      const rEnd = isOverlap ? 38 : 44; // if overlap, no arrowhead needed
+      const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+      const rEnd = 44; // keeps arrowhead right outside destination circle
       const x2 = p2.x - (dx2 * rEnd) / d2;
       const y2 = p2.y - (dy2 * rEnd) / d2;
 
       const studentDisplay = trans.studentName || trans.studentId || 'Verified Sighting';
 
-      if (isOverlap) {
-        // SIMULTANEOUS / OVERLAP: Dashed non-directional resonance beam
-        edgesHtml += `
-          <g class="edge-group edge-overlap-group">
-            <path d="M ${x1} ${y1} L ${x2} ${y2}" 
-                  class="topo-edge-overlap"></path>
+      edgesHtml += `
+        <g class="edge-group">
+          <!-- Flowing Glowing Edge Path -->
+          <path d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" 
+                class="topo-edge-path" 
+                marker-end="url(#edgeArrowGreen)"></path>
 
-            <!-- Floating Dual-Presence Tag on Overlap Beam -->
-            <g class="edge-tag edge-tag-overlap" transform="translate(${midX}, ${midY})">
-              <rect x="-82" y="-12" width="164" height="24" rx="12" 
-                    fill="#031b26" stroke="#00e5ff" stroke-width="1.5"></rect>
-              <text text-anchor="middle" y="4" font-size="9.5" font-family="'JetBrains Mono', monospace" font-weight="700" fill="#00e5ff">
-                ⚡ DUAL: ${studentDisplay}
-              </text>
-            </g>
+          <!-- Floating Movement Tag on Edge -->
+          <g class="edge-tag" transform="translate(${midX}, ${midY})">
+            <rect x="-65" y="-12" width="130" height="24" rx="12" 
+                  fill="#061f14" stroke="#00ff88" stroke-width="1.5"></rect>
+            <text text-anchor="middle" y="4" font-size="10" font-family="'JetBrains Mono', monospace" font-weight="700" fill="#00ff88">
+              ➔ ${studentDisplay}
+            </text>
           </g>
-        `;
-      } else {
-        // SEQUENTIAL TRANSITION: Directional colored arrow
-        edgesHtml += `
-          <g class="edge-group">
-            <!-- Flowing Glowing Edge Path -->
-            <path d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" 
-                  class="topo-edge-path" 
-                  stroke="${studentColor.stroke}"
-                  marker-end="${studentColor.marker}"></path>
-
-            <!-- Floating Movement Tag on Edge -->
-            <g class="edge-tag" transform="translate(${midX}, ${midY})">
-              <rect x="-68" y="-12" width="136" height="24" rx="12" 
-                    fill="${studentColor.bg}" stroke="${studentColor.stroke}" stroke-width="1.5"></rect>
-              <text text-anchor="middle" y="4" font-size="10" font-family="'JetBrains Mono', monospace" font-weight="700" fill="${studentColor.tagText}">
-                ➔ ${studentDisplay}
-              </text>
-            </g>
-          </g>
-        `;
-      }
+        </g>
+      `;
     });
 
     topoEdgesLayer.innerHTML = edgesHtml;

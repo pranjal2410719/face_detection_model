@@ -243,7 +243,7 @@ async def broadcast_to_dashboards(event_type: str, data: Any):
 # -----------------------------------------------------------------------------
 # REST Endpoints
 # -----------------------------------------------------------------------------
-@app.api_route("/dashboard", methods=["GET", "HEAD"], response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
 async def serve_dashboard():
     """Serves the Centralized Dashboard."""
     dash_path = Path(__file__).resolve().parent / "static" / "dashboard.html"

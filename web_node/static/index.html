@@ -26,6 +26,9 @@
           <span class="chip-dot"></span>
           <span class="chip-text">CENTRAL RECEIVER: ONLINE</span>
         </div>
+        <button class="btn btn-outline btn-sm" id="btnWifiModal" style="color:#00e5ff; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.1);" title="Connect Mobile Cameras on Same Wi-Fi">
+          📶 Wi-Fi Cameras
+        </button>
         <a href="/dashboard" class="btn btn-outline btn-sm" target="_blank" title="Open Master Centralized Dashboard">
           📊 Centralized Dashboard ↗
         </a>
@@ -230,6 +233,69 @@
     </div>
   </div>
 
+  <!-- WI-FI & MOBILE DEVICE CONNECT MODAL -->
+  <div class="modal-backdrop" id="wifiModal">
+    <div class="modal-dialog modal-wifi-dialog">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">📶</span>
+          <div>
+            <h3 style="margin:0;">Connect Devices on Same Wi-Fi</h3>
+            <span style="font-size:11px; color:var(--text-muted);">Stream from mobile phones, tablets &amp; other laptops</span>
+          </div>
+        </div>
+        <button class="modal-close" id="btnCloseWifiModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="wifi-modal-content">
+          <div class="wifi-qr-card-wrapper">
+            <div class="wifi-qr-box" id="wifiQrContainer"></div>
+            <div class="wifi-qr-info">
+              <span class="wifi-badge-secure">🔒 HTTPS MODE (:8443)</span>
+              <div class="wifi-qr-title">Instant Mobile Camera</div>
+              <p class="wifi-qr-desc">Scan with your phone camera to open this camera station immediately on your phone.</p>
+            </div>
+          </div>
+
+          <div class="wifi-field-group">
+            <label class="wifi-field-label">Wi-Fi / Network IP Address</label>
+            <select id="wifiIpSelect" class="form-input" style="cursor:pointer;"></select>
+          </div>
+
+          <div class="wifi-field-group">
+            <label class="wifi-field-label">Mobile Camera URL (HTTPS Required)</label>
+            <div class="wifi-input-copy-group">
+              <input type="text" id="wifiCameraUrlInput" readonly>
+              <button class="btn btn-secondary btn-sm" id="btnCopyCameraUrl">📋 Copy</button>
+            </div>
+          </div>
+
+          <div class="wifi-field-group">
+            <label class="wifi-field-label">Client Dashboard URL</label>
+            <div class="wifi-input-copy-group">
+              <input type="text" id="wifiDashboardUrlInput" readonly>
+              <button class="btn btn-secondary btn-sm" id="btnCopyDashboardUrl">📋 Copy</button>
+            </div>
+          </div>
+
+          <div class="wifi-notice-box">
+            <strong>💡 How to use with phones on same Wi-Fi:</strong>
+            <ol class="wifi-steps">
+              <li>Ensure your phone and this PC are on the <strong>same Wi-Fi network</strong>.</li>
+              <li>Scan the QR code or paste the Camera URL into Chrome or Safari.</li>
+              <li>When the self-signed SSL warning appears, tap <strong>"Advanced" ➔ "Proceed to IP (unsafe)"</strong>.</li>
+              <li>Grant camera permission — your phone immediately begins detecting &amp; recognizing faces!</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnDoneWifi">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="qrcode.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

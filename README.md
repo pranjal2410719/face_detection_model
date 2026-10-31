@@ -118,16 +118,23 @@ python3 -m web_node.server
 
 ---
 
-## 🌐 Web Endpoints & URLs
+## 🌐 Web Endpoints & Same Wi-Fi Network Access
 
-| Service | Local URL | Network / Mobile URL (LAN) |
+When your devices (phones, tablets, client laptops, and host PC) are connected to the **same Wi-Fi network**:
+
+| Service | Local PC URL | Same Wi-Fi Devices (Phones / Clients) |
 | :--- | :--- | :--- |
-| **Centralized Command Dashboard** | [http://localhost:8500/dashboard](http://localhost:8500/dashboard) | `https://<YOUR_IP>:8443/dashboard` |
-| **Edge Camera Node Station** | [http://localhost:8500](http://localhost:8500) | `https://<YOUR_IP>:8443` |
-| **Central WebSocket Receiver** | `ws://127.0.0.1:8765/face-events` | `ws://<YOUR_IP>:8765/face-events` |
+| **Centralized Command Dashboard** | [http://localhost:8500/dashboard](http://localhost:8500/dashboard) | `http://<WIFI_IP>:8500/dashboard` or `https://<WIFI_IP>:8443/dashboard` |
+| **Mobile & Client Camera Node** | [http://localhost:8500](http://localhost:8500) | `https://<WIFI_IP>:8443` *(HTTPS required by mobile browsers for camera)* |
+| **Network IP & Config API** | [http://localhost:8500/api/network-info](http://localhost:8500/api/network-info) | `http://<WIFI_IP>:8500/api/network-info` |
+| **Central WebSocket Receiver** | `ws://127.0.0.1:8765/face-events` | `ws://<WIFI_IP>:8765/face-events` |
 
 > [!TIP]
-> **Mobile Device Access**: Open `https://<YOUR_IP>:8443` in Safari/Chrome on your phone. Accept the self-signed certificate warning to stream your phone camera directly into the network.
+> **Instant Connect via QR Code**:
+> 1. Open the dashboard on your PC at `http://localhost:8500/dashboard`.
+> 2. Click the **"📶 Connect Wi-Fi Devices"** button in the top navigation bar.
+> 3. Scan the generated **QR Code** directly with any phone connected to the same Wi-Fi.
+> 4. In mobile Chrome/Safari, tap **"Advanced" ➔ "Proceed to IP (unsafe)"** to accept the local network SSL certificate and activate the camera!
 
 ---
 

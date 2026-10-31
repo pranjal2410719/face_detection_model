@@ -50,6 +50,7 @@
     setupTabSwitching();
     setupSidebarAndNav();
     setupModal();
+    initWifiConnectModal();
     await fetchStats();
     await fetchConnectedNodes();
     await fetchTrajectories();
@@ -1111,6 +1112,129 @@
 
   function setupModal() {
     // Modal open/close is harmonized with app.js
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wi-Fi Cross-Device Connect Modal
+  // ---------------------------------------------------------------------------
+  let networkInfo = null;
+  let wifiQrCode = null;
+
+  function initWifiConnectModal() {
+    const btnOpen = document.getElementById('btnWifiModal');
+    const modal = document.getElementById('wifiModal');
+    const btnClose = document.getElementById('btnCloseWifiModal');
+    const btnDone = document.getElementById('btnDoneWifi');
+    const ipSelect = document.getElementById('wifiIpSelect');
+    const cameraInput = document.getElementById('wifiCameraUrlInput');
+    const dashInput = document.getElementById('wifiDashboardUrlInput');
+    const btnCopyCam = document.getElementById('btnCopyCameraUrl');
+    const btnCopyDash = document.getElementById('btnCopyDashboardUrl');
+    const qrBox = document.getElementById('wifiQrContainer');
+
+    if (!btnOpen || !modal) return;
+
+    function closeModal() {
+      modal.classList.remove('active');
+    }
+
+    function openModal() {
+      modal.classList.add('active');
+      loadNetworkData();
+    }
+
+    btnOpen.addEventListener('click', openModal);
+    if (btnClose) btnClose.addEventListener('click', closeModal);
+    if (btnDone) btnDone.addEventListener('click', closeModal);
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.classList.contains('active')) {
+        closeModal();
+      }
+    });
+
+    async function loadNetworkData() {
+      try {
+        const res = await fetch('/api/network-info');
+        if (!res.ok) throw new Error('Network API error');
+        networkInfo = await res.json();
+      } catch (err) {
+        const host = window.location.hostname;
+        networkInfo = {
+          primary_ip: host,
+          all_ips: [host],
+          networks: [{
+            ip: host,
+            is_primary: true,
+            camera_https: `https://${host}:8443`,
+            dashboard_http: `http://${host}:8500/dashboard`
+          }]
+        };
+      }
+      renderIpOptions();
+    }
+
+    function renderIpOptions() {
+      if (!ipSelect) return;
+      ipSelect.innerHTML = '';
+      const nets = (networkInfo && networkInfo.networks) || [];
+      nets.forEach((net) => {
+        const opt = document.createElement('option');
+        opt.value = net.ip;
+        opt.textContent = `${net.ip}${net.is_primary ? ' ★ (Primary Wi-Fi/LAN)' : ''}`;
+        ipSelect.appendChild(opt);
+      });
+
+      ipSelect.onchange = updateSelectedUrl;
+      updateSelectedUrl();
+    }
+
+    function updateSelectedUrl() {
+      const selectedIp = (ipSelect && ipSelect.value) || (networkInfo && networkInfo.primary_ip) || window.location.hostname;
+      const targetNet = (networkInfo && networkInfo.networks && networkInfo.networks.find(n => n.ip === selectedIp)) || {
+        camera_https: `https://${selectedIp}:8443`,
+        dashboard_http: `http://${selectedIp}:8500/dashboard`
+      };
+
+      if (cameraInput) cameraInput.value = targetNet.camera_https;
+      if (dashInput) dashInput.value = targetNet.dashboard_http;
+
+      if (typeof QRCode !== 'undefined' && qrBox) {
+        qrBox.innerHTML = '';
+        wifiQrCode = new QRCode(qrBox, {
+          text: targetNet.camera_https,
+          width: 120,
+          height: 120,
+          colorDark: '#030712',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      }
+    }
+
+    function setupCopy(btn, input) {
+      if (!btn || !input) return;
+      btn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(input.value);
+          const orig = btn.textContent;
+          btn.textContent = '✓ Copied!';
+          setTimeout(() => { btn.textContent = orig; }, 1800);
+        } catch (e) {
+          input.select();
+          document.execCommand('copy');
+          btn.textContent = '✓ Copied!';
+          setTimeout(() => { btn.textContent = '📋 Copy'; }, 1800);
+        }
+      };
+    }
+
+    setupCopy(btnCopyCam, cameraInput);
+    setupCopy(btnCopyDash, dashInput);
   }
 
   // Self-start

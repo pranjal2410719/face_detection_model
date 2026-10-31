@@ -42,6 +42,7 @@ from core.recognizer import FaceRecognizer
 from core.student_db import StudentDatabase
 from core.event_dispatcher import CameraEventDispatcher
 from core.visualizer import Visualizer
+from core.network_utils import get_network_info, ensure_ssl_certificates, get_lan_ips
 
 # Configure logging
 logging.basicConfig(
@@ -243,7 +244,7 @@ async def broadcast_to_dashboards(event_type: str, data: Any):
 # -----------------------------------------------------------------------------
 # REST Endpoints
 # -----------------------------------------------------------------------------
-@app.get("/dashboard", response_class=HTMLResponse)
+@app.api_route("/dashboard", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def serve_dashboard():
     """Serves the Centralized Dashboard."""
     dash_path = Path(__file__).resolve().parent / "static" / "dashboard.html"
@@ -278,6 +279,12 @@ async def get_node_info():
         "enrolled_count": len(enrolled),
         "enrolled_students": enrolled
     }
+
+
+@app.get("/api/network-info")
+async def get_network_info_endpoint():
+    """Returns detected LAN / Wi-Fi IP addresses and ready-to-use URLs for mobile and client devices."""
+    return get_network_info(http_port=8500, https_port=8443)
 
 
 @app.get("/api/connected-nodes")
@@ -811,30 +818,34 @@ app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
 def run_dual_servers():
     """Runs HTTP (:8500) and HTTPS (:8443) concurrently for mobile camera compatibility."""
-    cert_path = PROJECT_ROOT / "certs" / "cert.pem"
-    key_path = PROJECT_ROOT / "certs" / "key.pem"
+    cert_dir = PROJECT_ROOT / "certs"
+    cert_path, key_path = ensure_ssl_certificates(cert_dir)
 
-    if cert_path.exists() and key_path.exists():
-        logger.info("SSL certificates found. Launching Dual HTTP (:8500) & HTTPS (:8443) servers...")
-        cfg_http = uvicorn.Config("web_node.server:app", host="0.0.0.0", port=8500, log_level="info")
-        cfg_https = uvicorn.Config(
-            "web_node.server:app",
-            host="0.0.0.0",
-            port=8443,
-            ssl_certfile=str(cert_path),
-            ssl_keyfile=str(key_path),
-            log_level="info"
-        )
-        srv_http = uvicorn.Server(cfg_http)
-        srv_https = uvicorn.Server(cfg_https)
+    net_info = get_network_info()
+    primary_ip = net_info.get("primary_ip", "127.0.0.1")
+    logger.info("=" * 60)
+    logger.info(f"NETCAM DUAL SERVER ACTIVE ON WI-FI & LOCAL NETWORK")
+    logger.info(f"Local PC:       http://localhost:8500/dashboard")
+    logger.info(f"Wi-Fi Devices:  https://{primary_ip}:8443 (Mobile Cameras)")
+    logger.info(f"Wi-Fi Dashboard:http://{primary_ip}:8500/dashboard")
+    logger.info("=" * 60)
 
-        async def serve():
-            await asyncio.gather(srv_http.serve(), srv_https.serve())
+    cfg_http = uvicorn.Config("web_node.server:app", host="0.0.0.0", port=8500, log_level="info")
+    cfg_https = uvicorn.Config(
+        "web_node.server:app",
+        host="0.0.0.0",
+        port=8443,
+        ssl_certfile=str(cert_path),
+        ssl_keyfile=str(key_path),
+        log_level="info"
+    )
+    srv_http = uvicorn.Server(cfg_http)
+    srv_https = uvicorn.Server(cfg_https)
 
-        asyncio.run(serve())
-    else:
-        logger.info("Launching standard HTTP (:8500) server...")
-        uvicorn.run("web_node.server:app", host="0.0.0.0", port=8500, reload=False)
+    async def serve():
+        await asyncio.gather(srv_http.serve(), srv_https.serve())
+
+    asyncio.run(serve())
 
 
 if __name__ == "__main__":
